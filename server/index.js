@@ -55,7 +55,7 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/guest', async (req, res) => {
   try {
     const name = 'Guest_' + Math.random().toString(36).slice(2, 7);
-    const user = await db.register(name, Math.random().toString(36).slice(2) + 'Aa1!', '');
+    const user = await db.register(name, Math.random().toString(36).slice(2) + 'Aa1!', '', { guest: true });
     const token = jwt.sign({ uid: user.id }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user });
   } catch (e) { res.status(400).json({ error: e.message }); }

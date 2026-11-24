@@ -46,6 +46,7 @@ function userToRow(u) {
     owned_characters: u.ownedCharacters || ['recruit'],
     armor: u.armor || 'standard',
     owned_armors: u.ownedArmors || ['standard'],
+    guest: !!u.guest,
   };
 }
 
@@ -66,6 +67,7 @@ function rowToUser(r) {
     ownedCharacters: r.owned_characters || ['recruit'],
     armor: r.armor || 'standard',
     ownedArmors: r.owned_armors || ['standard'],
+    guest: !!r.guest,
   };
 }
 

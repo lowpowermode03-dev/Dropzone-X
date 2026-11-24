@@ -19,8 +19,12 @@ create table if not exists public.players (
   character text not null default 'recruit',
   owned_characters jsonb not null default '["recruit"]'::jsonb,
   armor text not null default 'standard',
-  owned_armors jsonb not null default '["standard"]'::jsonb
+  owned_armors jsonb not null default '["standard"]'::jsonb,
+  guest boolean not null default false
 );
+
+-- Safe upgrade for projects that ran an earlier version of this schema:
+alter table public.players add column if not exists guest boolean not null default false;
 
 create table if not exists public.matches (
   id bigint generated always as identity primary key,

@@ -12,7 +12,7 @@ npm start
 # open http://localhost:3000
 ```
 
-Create an account, sign in as a guest, or log back in anytime — stats, level, XP, V-Bucks and skins persist between sessions.
+Create an account, sign in as a guest, or log back in anytime — stats, level, XP, V-Bucks and skins persist between sessions. **Guest accounts are noob accounts**: instant play with the default loadout and basic match stats, but no leveling — no XP, level-ups or V-Bucks progression until you create a real account.
 
 ## 🎨 Key-Art Look (matches the Dropzone X hero art)
 

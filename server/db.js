@@ -113,6 +113,7 @@ const COSMETIC_KINDS = {
 // Backfill cosmetics fields for accounts created before characters/armor existed
 function ensureCosmetics(u) {
   if (!u) return u;
+  if (u.guest === undefined && u.username && u.username.startsWith('guest_')) u.guest = true; // legacy guests
   if (!Array.isArray(u.ownedSkins) || !u.ownedSkins.length) u.ownedSkins = ['default'];
   if (!SKINS.find(s => s.id === u.skin)) u.skin = 'default';
   if (!Array.isArray(u.ownedCharacters) || !u.ownedCharacters.length) u.ownedCharacters = ['recruit'];
@@ -125,7 +126,7 @@ function ensureCosmetics(u) {
 }
 users.forEach(ensureCosmetics);
 
-async function register(username, password, email) {
+async function register(username, password, email, opts = {}) {
   username = (username || '').trim().toLowerCase();
   if (!/^[a-z0-9_]{3,16}$/.test(username)) throw new Error('Username must be 3-16 chars: letters, numbers, underscore');
   if (!password || password.length < 6) throw new Error('Password must be at least 6 characters');
@@ -140,6 +141,7 @@ async function register(username, password, email) {
     stats: { matches: 0, wins: 0, kills: 0, deaths: 0, top10: 0, damage: 0 },
     level: 1, xp: 0, vbucks: 500, skin: 'default', ownedSkins: ['default'],
     character: 'recruit', ownedCharacters: ['recruit'], armor: 'standard', ownedArmors: ['standard'],
+    guest: !!opts.guest, // guest = noob account: plays instantly, but no leveling / XP / V-Bucks progression
   };
   users.push(user);
   saveUsers();
@@ -161,6 +163,7 @@ function publicUser(u) {
     id: u.id, username: u.username, email: u.email, createdAt: u.createdAt,
     stats: u.stats, level: u.level, xp: u.xp, vbucks: u.vbucks, skin: u.skin, ownedSkins: u.ownedSkins,
     character: u.character, ownedCharacters: u.ownedCharacters, armor: u.armor, ownedArmors: u.ownedArmors,
+    guest: !!u.guest,
   };
 }
 
@@ -184,11 +187,15 @@ function addMatchResult(userId, { placement, kills, damage, won, totalPlayers })
   u.stats.damage += damage;
   if (won) u.stats.wins += 1;
   if (placement <= 10) u.stats.top10 += 1;
-  const xpGain = 50 + kills * 25 + (won ? 200 : 0) + Math.max(0, 20 - placement) * 5;
-  u.xp += xpGain;
-  const need = u.level * 1000;
-  if (u.xp >= need) { u.xp -= need; u.level += 1; u.vbucks += 100; }
-  if (won) u.vbucks += 50;
+  // Guests are noob accounts: they can play and keep basic match stats, but
+  // they never level — no XP, no level-ups, no V-Bucks progression.
+  if (!u.guest) {
+    const xpGain = 50 + kills * 25 + (won ? 200 : 0) + Math.max(0, 20 - placement) * 5;
+    u.xp += xpGain;
+    const need = u.level * 1000;
+    if (u.xp >= need) { u.xp -= need; u.level += 1; u.vbucks += 100; }
+    if (won) u.vbucks += 50;
+  }
   saveUsers();
   const matchRow = { userId, placement, kills, damage, won, totalPlayers, at: Date.now() };
   matches.push(matchRow);
