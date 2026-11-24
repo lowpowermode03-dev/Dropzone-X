@@ -82,6 +82,11 @@ Full touch support, auto-detected (also switchable in Settings):
 - **Atmosphere**: sun glitter on water feeds the bloom, floating pollen/light motes drift around the player, sun lens sprite
 - Quality-aware: Cinematic = full rays + strong bloom, Balanced = cheaper rays, Performance = direct render; toggle in **Settings → Post FX (bloom + god rays)**
 
+## 🌾 Detail & Sound Pass
+- **Singular grass blades**: every instance is ONE blade in a camera-wrapped infinite meadow (up to ~46k blades) fed by a baked terrain heightmap — always dense at your feet, swaying in gusts, glowing when backlit by the sun, hidden under water / in plazas / on cliffs automatically
+- **Map micro-detail**: procedural multi-scale ground speckle + dry patches on the terrain shader, instanced pebbles & ground clutter, denser bushes and flowers
+- **Full soundscape (100% procedural, zero audio files)**: looping wind that rises when you skydive/glide, stereo birdsong, chill menu chord-pad music, per-weapon gunfire, reload clicks, footsteps, UI clicks — all unlocked properly on first interaction and routed through the volume setting
+
 ## Controls
 
 | Key | Action |

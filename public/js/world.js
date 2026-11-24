@@ -526,6 +526,22 @@ export function buildWorld(scene, data, quality = {}) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
   const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, bumpMap: detailBumpTex(), bumpScale: 1.4 });
+  // procedural micro-detail: multi-scale ground speckle + dry patches so the
+  // terrain reads as textured earth up close instead of flat vertex color
+  terrainMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = 'varying vec3 vGW;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n vGW = (modelMatrix * vec4(position, 1.0)).xyz;');
+    sh.fragmentShader = ('varying vec3 vGW;\n' +
+      'float thash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n' +
+      'float tnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(thash(i), thash(i + vec2(1, 0)), f.x), mix(thash(i + vec2(0, 1)), thash(i + vec2(1, 1)), f.x), f.y); }\n' +
+      sh.fragmentShader).replace('#include <color_fragment>', `#include <color_fragment>
+      float gnd1 = tnoise(vGW.xz * 0.33);
+      float gnd2 = tnoise(vGW.xz * 0.045);
+      float gnd3 = tnoise(vGW.xz * 2.7);
+      diffuseColor.rgb *= 0.84 + gnd1 * 0.20 + gnd3 * 0.12;
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.07, 0.97, 0.80), smoothstep(0.55, 0.85, gnd2) * 0.45);
+    `);
+  };
   const terrain = new THREE.Mesh(geo, terrainMat);
   terrain.receiveShadow = true;
   scene.add(terrain);
@@ -682,63 +698,131 @@ export function buildWorld(scene, data, quality = {}) {
     return out;
   }
   const grassCam = { value: new THREE.Vector3() };
-  // Blade-tuft geometry: 3 tapered blades, up-facing normals (Fortnite-style flat
-  // lighting), dark base -> bright tip vertex gradient.
-  function bladeTuftGeometry() {
-    const pos = [], norm = [], col = [], idx = [];
-    let vi = 0;
-    for (let b = 0; b < 3; b++) {
-      const a = b * (Math.PI * 2 / 3) + 0.45;
-      const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
-      const w = 0.085, bend = 0.26;
-      const verts = [
-        [-px * w, 0, -pz * w, 0.30, 0.36, 0.13],
-        [px * w, 0, pz * w, 0.30, 0.36, 0.13],
-        [dx * bend - px * w * 0.22, 1, dz * bend - pz * w * 0.22, 1.25, 1.3, 0.8],
-        [dx * bend + px * w * 0.22, 1, dz * bend + pz * w * 0.22, 1.25, 1.3, 0.8],
-      ];
-      for (const v of verts) { pos.push(v[0], v[1], v[2]); norm.push(0, 1, 0); col.push(v[3], v[4], v[5]); }
-      idx.push(vi, vi + 1, vi + 3, vi, vi + 3, vi + 2);
-      vi += 4;
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.setIndex(idx);
-    return g;
+  /* ==== SINGULAR GRASS BLADES — camera-wrapped infinite meadow ====
+     Every instance is ONE individual blade. Blades live in a tile that wraps
+     around the camera (uCamPos), so the meadow is always dense right where
+     you stand. Ground height comes from a baked heightmap of the real
+     deterministic terrain, hiding blades under water / in POI plazas /
+     on cliffs via slope estimation. */
+  const grassTile = grassCount >= 40000 ? 150 : grassCount >= 18000 ? 128 : 92;
+  const HT = grassCount >= 40000 ? 1024 : 512;
+  const hdata = new Uint16Array(HT * HT);
+  for (let j = 0; j < HT; j++) for (let i = 0; i < HT; i++) {
+    hdata[j * HT + i] = THREE.DataUtils.toHalfFloat(terrainHeight((i / (HT - 1)) * 4000 - 2000, (j / (HT - 1)) * 4000 - 2000));
   }
-  const grassMat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, vertexColors: true });
-  grassMat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = grassTime;
-    sh.uniforms.uCamPos = grassCam;
-    sh.vertexShader = 'uniform float uTime;\nuniform vec3 uCamPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', `
-      #include <begin_vertex>
-      #ifdef USE_INSTANCING
-        vec4 gwp = modelMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0);
-        float hf = clamp(position.y, 0.0, 1.0);
-        // fade tufts out with distance (kills pop-in, saves fill)
-        float gfade = 1.0 - smoothstep(130.0, 215.0, distance(gwp.xz, uCamPos.xz));
-        transformed.xz *= gfade; transformed.y *= gfade;
-        // travelling gusts + per-tuft flutter
-        float gust = sin(uTime*1.25 + gwp.x*0.045 + gwp.z*0.06)*0.5+0.5;
-        float flutter = sin(uTime*2.3 + gwp.x*0.33 + gwp.z*0.27);
-        float gsw = (flutter*0.10 + gust*gust*0.40) * hf * hf;
-        transformed.x += gsw * 0.6; transformed.z += gsw * 0.34;
-      #endif
-    `);
-  };
-  const grassMesh = new THREE.InstancedMesh(bladeTuftGeometry(), grassMat, Math.max(1, grassCount));
-  scatter(grassCount, (x, y, z) => {
-    dummy.position.set(x, y - 0.06, z);
-    dummy.scale.set(1.5 + rng() * 1.3, 1 + rng() * 1.6, 1.5 + rng() * 1.3);
-    dummy.rotation.set((rng() - 0.5) * 0.3, rng() * 3, (rng() - 0.5) * 0.3); dummy.updateMatrix();
-    return dummy.matrix.clone();
-  }).forEach((m, i) => { grassMesh.setMatrixAt(i, m); grassMesh.setColorAt(i, tmpColor.setHSL(0.24 + rng() * 0.09, 0.6, 0.32 + rng() * 0.2)); });
+  const htex = new THREE.DataTexture(hdata, HT, HT, THREE.RedFormat, THREE.HalfFloatType);
+  htex.minFilter = THREE.LinearFilter; htex.magFilter = THREE.LinearFilter;
+  htex.wrapS = htex.wrapT = THREE.ClampToEdgeWrapping;
+  htex.needsUpdate = true;
+  const poiVecs = [];
+  for (let i = 0; i < 10; i++) { const p = data.pois[i]; poiVecs.push(p ? new THREE.Vector4(p.x, p.z, p.r * 0.55, 0) : new THREE.Vector4(0, 0, -1, 0)); }
+  const grassMat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    fog: true,
+    uniforms: {
+      uTime: grassTime,
+      uCamPos: grassCam,
+      uHeight: { value: htex },
+      uTile: { value: grassTile },
+      uSunDir: { value: new THREE.Vector3(0.5, 0.62, 0.35).normalize() },
+      uPois: { value: poiVecs },
+      fogColor: { value: new THREE.Color(0x9fc6ee) },
+      fogNear: { value: 320 },
+      fogFar: { value: 4200 },
+    },
+    vertexShader: `
+      attribute vec3 aOffset;
+      attribute vec4 aRand;
+      attribute float aH;
+      uniform float uTime;
+      uniform vec3 uCamPos;
+      uniform sampler2D uHeight;
+      uniform float uTile;
+      uniform vec4 uPois[10];
+      uniform vec3 uSunDir;
+      varying float vH;
+      varying float vJit;
+      varying float vTrans;
+      #include <fog_pars_vertex>
+      float groundAt(vec2 w) { return texture2D(uHeight, (w + 2000.0) / 4000.0).r; }
+      void main() {
+        vH = aH;
+        vJit = aRand.w;
+        vec2 wrapped = mod(aOffset.xz - uCamPos.xz + uTile * 0.5, uTile) - uTile * 0.5;
+        vec2 wxz = uCamPos.xz + wrapped;
+        float g = groundAt(wxz);
+        float slope = (abs(groundAt(wxz + vec2(5.0, 0.0)) - g) + abs(groundAt(wxz + vec2(0.0, 5.0)) - g)) * 0.2;
+        float fade = (1.0 - smoothstep(uTile * 0.33, uTile * 0.49, length(wrapped)))
+                   * (1.0 - smoothstep(0.45, 0.95, slope));
+        if (g < 0.55) fade = 0.0;
+        for (int i = 0; i < 10; i++) {
+          vec2 dp = wxz - uPois[i].xy;
+          float rr = uPois[i].z;
+          if (rr > 0.0 && dot(dp, dp) < rr * rr) { fade = 0.0; break; }
+        }
+        float ca = cos(aRand.x), sa = sin(aRand.x);
+        vec3 p = position;
+        p.x *= 0.85 + aRand.w * 0.6;
+        p.z += aRand.z * aH;                       // individual lean
+        p = vec3(p.x * ca - p.z * sa, p.y * aRand.y, p.x * sa + p.z * ca);
+        p *= fade;
+        vec3 world = vec3(wxz.x, g - 0.1, wxz.y) + p;
+        float gust = sin(uTime * 1.25 + wxz.x * 0.045 + wxz.y * 0.06) * 0.5 + 0.5;
+        float flutter = sin(uTime * 2.3 + wxz.x * 0.33 + wxz.y * 0.27 + aRand.x * 7.0);
+        float bendAmt = (flutter * 0.08 + gust * gust * 0.30) * aH * aH * aRand.y;
+        world.x += bendAmt * 0.55;
+        world.z += bendAmt * 0.30;
+        vec3 vdir = world - uCamPos;
+        vTrans = pow(max(dot(normalize(vdir), uSunDir), 0.0), 3.0) * aH;
+        vec4 mvPosition = viewMatrix * vec4(world, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `
+      varying float vH;
+      varying float vJit;
+      varying float vTrans;
+      #include <fog_pars_fragment>
+      void main() {
+        vec3 col = mix(vec3(0.10, 0.21, 0.045), vec3(0.44, 0.76, 0.19), vH);
+        col *= 0.75 + vJit * 0.5;
+        col *= 0.70 + 0.45 * vH;
+        col += vec3(1.0, 0.88, 0.5) * vTrans * 0.5;
+        gl_FragColor = vec4(col, 1.0);
+        #include <fog_fragment>
+      }`,
+  });
+  const bladeGeo = new THREE.InstancedBufferGeometry();
+  {
+    // one blade: 4 levels, tapering, forward-curved
+    const lv = [[0, 0.048, 0], [0.4, 0.038, 0.02], [0.75, 0.023, 0.08], [1, 0.002, 0.2]];
+    const bp = [], bh = [], bi = [];
+    lv.forEach(([y, w, bz]) => { bp.push(-w, y, bz, w, y, bz); bh.push(y, y); });
+    for (let s = 0; s < 3; s++) { const a = s * 2; bi.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+    bladeGeo.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+    bladeGeo.setAttribute('aH', new THREE.Float32BufferAttribute(bh, 1));
+    bladeGeo.setIndex(bi);
+    const n = Math.max(1, grassCount);
+    const offs = new Float32Array(n * 3), rands = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      offs[i * 3] = rng() * grassTile; offs[i * 3 + 1] = 0; offs[i * 3 + 2] = rng() * grassTile;
+      rands[i * 4] = rng() * Math.PI * 2;
+      rands[i * 4 + 1] = 0.8 + rng() * 0.95;   // height 0.8–1.75 m
+      rands[i * 4 + 2] = rng() * 0.35;          // lean
+      rands[i * 4 + 3] = rng();                // color jitter
+    }
+    bladeGeo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offs, 3));
+    bladeGeo.setAttribute('aRand', new THREE.InstancedBufferAttribute(rands, 4));
+    bladeGeo.instanceCount = n;
+  }
+  const grassMesh = new THREE.Mesh(bladeGeo, grassMat);
+  grassMesh.frustumCulled = false;
   scene.add(grassMesh);
 
-  const bushMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.5, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), 320);
-  scatter(320, (x, y, z) => {
+  const vegScale = Math.max(0.5, Math.min(2.2, grassCount / 9000));
+  const bushCount = Math.round(320 * vegScale);
+  const bushMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.5, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Math.max(1, bushCount));
+  scatter(bushCount, (x, y, z) => {
     dummy.position.set(x, y + 0.8, z);
     dummy.scale.set(1 + rng() * 1.6, 0.7 + rng() * 0.7, 1 + rng() * 1.6);
     dummy.rotation.set(0, rng() * 3, 0); dummy.updateMatrix();
@@ -747,14 +831,27 @@ export function buildWorld(scene, data, quality = {}) {
   bushMesh.castShadow = true;
   scene.add(bushMesh);
 
-  const flowerMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 6, 5), new THREE.MeshStandardMaterial({ roughness: 0.6, emissiveIntensity: 0.25 }), 600);
+  const flowerCount = Math.round(600 * vegScale);
+  const flowerMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 6, 5), new THREE.MeshStandardMaterial({ roughness: 0.6, emissiveIntensity: 0.25 }), Math.max(1, flowerCount));
   const flowerCols = [0xff5e8a, 0xffd94d, 0xffffff, 0xc77dff, 0xff8c42];
-  scatter(600, (x, y, z) => {
+  scatter(flowerCount, (x, y, z) => {
     dummy.position.set(x, y + 0.5 + rng() * 0.4, z);
     dummy.scale.setScalar(0.8 + rng()); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
     return dummy.matrix.clone();
   }).forEach((m, i) => { flowerMesh.setMatrixAt(i, m); flowerMesh.setColorAt(i, tmpColor.setHex(flowerCols[i % flowerCols.length])); });
   scene.add(flowerMesh);
+
+  /* ---- pebbles & ground clutter (micro-detail) ---- */
+  const pebbleCount = Math.round(1500 * vegScale);
+  const pebbleMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.34, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Math.max(1, pebbleCount));
+  scatter(pebbleCount, (x, y, z) => {
+    dummy.position.set(x, y + 0.03, z);
+    dummy.scale.set(0.5 + rng() * 1.6, 0.35 + rng() * 0.8, 0.5 + rng() * 1.6);
+    dummy.rotation.set(rng() * 3, rng() * 3, rng() * 3); dummy.updateMatrix();
+    return dummy.matrix.clone();
+  }).forEach((m, i) => { pebbleMesh.setMatrixAt(i, m); pebbleMesh.setColorAt(i, tmpColor.setHSL(0.08, 0.04 + rng() * 0.08, 0.3 + rng() * 0.26)); });
+  pebbleMesh.receiveShadow = true;
+  scene.add(pebbleMesh);
 
   /* ---- dense decorative pine forests + cliff boulders (visual density) ---- */
   const roadSegs = [];

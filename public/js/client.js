@@ -110,9 +110,109 @@ function playTone(freq, dur = 0.07, vol = 0.08, type = 'square') {
     const ac = audio(); const o = ac.createOscillator(), g = ac.createGain();
     o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(vol, ac.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
-    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + dur);
+    o.connect(g); g.connect(MASTER || ac.destination); o.start(); o.stop(ac.currentTime + dur);
   } catch {}
 }
+
+// ---------------- ambience: wind, birdsong & menu music (all procedural) ----------------
+let AMB = null;
+function startAmbience() {
+  try {
+    const ac = audio(); // also resumes the context (must be inside a user gesture first time)
+    if (AMB || !AC) return;
+    // looping brown-ish noise -> wind
+    const len = ac.sampleRate * 2;
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.03 * w) / 1.03; d[i] = last * 4.2; }
+    const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+    const filt = ac.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 420; filt.Q.value = 0.4;
+    const windGain = ac.createGain(); windGain.gain.value = 0;
+    src.connect(filt); filt.connect(windGain); windGain.connect(MASTER);
+    src.start();
+    // slow weather LFOs on the wind
+    const lfo1 = ac.createOscillator(), lfo1g = ac.createGain();
+    lfo1.frequency.value = 0.07; lfo1g.gain.value = 130; lfo1.connect(lfo1g); lfo1g.connect(filt.frequency); lfo1.start();
+    const lfo2 = ac.createOscillator(), lfo2g = ac.createGain();
+    lfo2.frequency.value = 0.045; lfo2g.gain.value = 0.05; lfo2.connect(lfo2g); lfo2g.connect(windGain.gain); lfo2.start();
+    const musicFilter = ac.createBiquadFilter(); musicFilter.type = 'lowpass'; musicFilter.frequency.value = 780;
+    const musicOut = ac.createGain(); musicOut.gain.value = 0.9;
+    musicFilter.connect(musicOut); musicOut.connect(MASTER);
+    AMB = { windGain, musicFilter, nextChord: 0, chordIdx: 0, timer: null };
+    AMB.timer = setInterval(ambienceTick, 650);
+  } catch {}
+}
+const MENU_CHORDS = [
+  [130.81, 196.00, 261.63, 329.63], // Cmaj7
+  [110.00, 164.81, 220.00, 261.63], // Am7
+  [87.31, 130.81, 174.61, 220.00],  // Fmaj7
+  [98.00, 146.83, 196.00, 246.94],  // G
+];
+function playMenuChord(idx) {
+  try {
+    const ac = AC, t = ac.currentTime;
+    const notes = MENU_CHORDS[idx % MENU_CHORDS.length];
+    notes.forEach((f, i) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'triangle'; o.frequency.value = f; o.detune.value = (i - 1.5) * 3;
+      g.gain.setValueAtTime(0, t + i * 0.06);
+      g.gain.linearRampToValueAtTime(0.034, t + i * 0.06 + 1.1);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + 3.5);
+      o.connect(g); g.connect(AMB.musicFilter);
+      o.start(t + i * 0.06); o.stop(t + 3.6);
+    });
+    // soft sparkle note on top
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = notes[1 + (idx % 3)] * 2;
+    g.gain.setValueAtTime(0, t + 1.7);
+    g.gain.linearRampToValueAtTime(0.011, t + 2.0);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 3.2);
+    o.connect(g); g.connect(AMB.musicFilter);
+    o.start(t + 1.7); o.stop(t + 3.3);
+  } catch {}
+}
+function birdChirp() {
+  try {
+    const ac = AC, t0 = ac.currentTime + 0.03;
+    const pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
+    const out = ac.createGain(); out.gain.value = 0.8;
+    if (pan) { pan.pan.value = Math.random() * 1.2 - 0.6; out.connect(pan); pan.connect(MASTER); } else out.connect(MASTER);
+    const n = 2 + Math.floor(Math.random() * 2);
+    const base = 2350 + Math.random() * 700;
+    for (let k = 0; k < n; k++) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      const s = t0 + k * 0.15;
+      o.type = 'sine';
+      o.frequency.setValueAtTime(base, s);
+      o.frequency.exponentialRampToValueAtTime(base * 1.28, s + 0.05);
+      o.frequency.exponentialRampToValueAtTime(base * 0.94, s + 0.1);
+      g.gain.setValueAtTime(0, s);
+      g.gain.linearRampToValueAtTime(0.038, s + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, s + 0.11);
+      o.connect(g); g.connect(out);
+      o.start(s); o.stop(s + 0.13);
+    }
+  } catch {}
+}
+function ambienceTick() {
+  if (!AMB || !AC || AC.state !== 'running') return;
+  let wind = 0.05;
+  if (!G.active) wind = 0.10;
+  else if (G.mode === 'skydiving') wind = G.gliding ? 0.34 : 0.5;
+  else if (G.mode === 'bus') wind = 0.22;
+  else wind = 0.12 + Math.min(0.2, Math.max(0, G.pos ? G.pos.y : 0) * 0.0011);
+  AMB.windGain.gain.setTargetAtTime(wind, AC.currentTime, 0.8);
+  // birds sing outdoors (menus + on the ground), never mid-fight chaos
+  const outdoors = !G.active || G.mode === 'ground';
+  if (outdoors && Math.random() < 0.34) birdChirp();
+  // menu music only outside matches
+  if (!G.active && AC.currentTime >= AMB.nextChord) { playMenuChord(AMB.chordIdx++); AMB.nextChord = AC.currentTime + 3.6; }
+}
+// Browsers only unlock audio inside a gesture — (re)start on every interaction.
+['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => { try { startAmbience(); } catch {} }, { passive: true }));
+// soft UI click on any menu button
+document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.btn, .ltab, .auth-tabs button')) playTone(690, 0.035, 0.022, 'sine'); });
 
 // ---------------- API ----------------
 async function api(path, opts = {}) {
@@ -536,7 +636,7 @@ async function startMenuScene() {
     scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4a7c43, 1.05));
     const sun = new THREE.DirectionalLight(0xfff1cf, 2.2);
     sun.position.set(400, 700, 250); scene.add(sun);
-    G.menuWorldRef = buildWorld(scene, data, { grass: 9000, seg: 128, aniso: 2 });
+    G.menuWorldRef = buildWorld(scene, data, { grass: 16000, seg: 128, aniso: 2 });
     G.menuCamera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 9000);
     document.body.classList.add('menu3d');
     updateMenuChar();
@@ -1089,7 +1189,13 @@ function doJumpAction() {
 function doReload() {
   if (!socket || !G.active) return;
   const s = currentSlot();
-  if (s && s.kind === 'weapon' && META) { G.reloadUntil = performance.now() + META.weapons[s.weaponId].reload; G.reloadTotal = META.weapons[s.weaponId].reload; }
+  if (s && s.kind === 'weapon' && META) {
+    G.reloadUntil = performance.now() + META.weapons[s.weaponId].reload; G.reloadTotal = META.weapons[s.weaponId].reload;
+    // mag-out / mag-in clicks
+    playNoise(0.04, 2600, 0.07);
+    setTimeout(() => playNoise(0.05, 1500, 0.09), Math.min(280, META.weapons[s.weaponId].reload * 0.4));
+    setTimeout(() => playNoise(0.04, 3200, 0.07), Math.max(320, META.weapons[s.weaponId].reload - 160));
+  }
   socket.emit('reload');
 }
 function openSettings() { syncSettingsUI(); $('settingsScreen').classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); }
@@ -1464,7 +1570,7 @@ function loop(now) {
       }
       G.pos.y = ground; G.velY = 0; G.onGround = true;
     } else if (G.pos.y > ground + 0.05) G.onGround = false;
-    if (G.onGround && G.keys.Space) { G.velY = 8.6; G.onGround = false; G.pos.y += 0.1; G.ads = false; const ab = $('btnAim'); if (ab) ab.classList.remove('on'); }
+    if (G.onGround && G.keys.Space) { G.velY = 8.6; G.onGround = false; G.pos.y += 0.1; G.ads = false; const ab = $('btnAim'); if (ab) ab.classList.remove('on'); playNoise(0.05, 700, 0.028); }
     horizontalCollide(prev);
     // head-bob + footsteps (bob drives first-person cam + character anim)
     G.bobOffset = 0;
