@@ -6,6 +6,19 @@
 // Supabase is unreachable) the game falls back to the local JSON database.
 const { createClient } = require('@supabase/supabase-js');
 
+// Local convenience: load KEY=VALUE pairs from a gitignored .env in the repo
+// root before reading the environment (real env vars always win).
+try {
+  const fs = require('fs'), path = require('path');
+  const envFile = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  }
+} catch { /* .env is optional */ }
+
 const url = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
