@@ -14,6 +14,27 @@ npm start
 
 Create an account, sign in as a guest, or log back in anytime — stats, level, XP, V-Bucks and skins persist between sessions.
 
+## 🎬 AAA Presentation Pass
+
+- **Procedural PBR textures** generated in-code (no downloads): building facades with lit windows, asphalt roads connecting every POI, concrete plazas, wood/stone/metal build materials, terrain micro-detail bump mapping
+- **Living island**: ~16,000 wind-swaying grass instances, bushes, flowers, two-layer foliage trees, instanced cars/crates/street-lamps with additive glow, distant mountain ring, drifting low-poly clouds
+- **Custom GLSL**: fbm-cloud sky with sun disc & cirrus, normal-perturbed water with sun specular + glitter, storm wall with swirling noise and lightning flashes, rarity loot beams
+- **Cinematic camera & combat feel**: ADS (right-click) with per-weapon FOV, sprint FOV kick, recoil, camera shake, landing dips, head-bob, footsteps, muzzle/impact/elimination particles, floating damage numbers, kill banner, sun lens flare, CSS colour-grade vignette
+- **Animated characters**: articulated arms/legs with procedural walk cycles, aim poses, per-weapon gun models, backpacks, visors, floating health bars
+- **Layered procedural audio**: per-weapon gunshot synthesis with distance falloff, footsteps, hits, kills and UI — zero audio assets
+- **Performance scaling**: Cinematic / Balanced / Performance presets + dynamic resolution that adapts to your FPS (⚙️ Settings, or the lobby)
+
+## 📱 Mobile Controls
+
+Full touch support, auto-detected (also switchable in Settings):
+
+- **Left virtual joystick** (dynamic origin) — move; push to the edge to sprint
+- **Drag the right half of the screen** to look/aim
+- **🔥 FIRE** (shoot/use/build), **◎ AIM** toggle, **⬆ JUMP** (also glider + leave-bus), **✋ LOOT**, **⟳ RELOAD**, **✚ USE**, crouch & sprint toggles
+- **🔨 BUILD** mode with on-screen shape/material buttons; tap inventory slots to swap weapons
+- Big **🪂 JUMP FROM BUS** button, rotate-to-landscape prompt, safe-area-aware HUD, fullscreen button, haptic feedback on hits/pickups
+- Mobile defaults to the Balanced graphics preset with dynamic resolution for smooth play
+
 ## Features
 
 **Accounts & progression**
@@ -51,6 +72,10 @@ Create an account, sign in as a guest, or log back in anytime — stats, level, 
 | R | Reload |
 | 1–5 | Switch inventory slot |
 | Q, then F / X | Build mode: cycle structure / material |
+| Right-click (hold) | Aim down sights |
+| P | Settings (graphics, sensitivity, volume, touch) |
+
+On touch devices an on-screen joystick + buttons replace the keyboard/mouse — see **Mobile Controls** above.
 
 ## Architecture
 

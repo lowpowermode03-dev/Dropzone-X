@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#141033">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>FortWorld — Browser Battle Royale</title>
 <link rel="stylesheet" href="/css/style.css">
 <script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
@@ -33,11 +37,11 @@
       <div id="authError" class="error"></div>
       <div class="divider"><span>or</span></div>
       <button id="btnGuest" class="btn ghost big">▶ PLAY AS GUEST (instant)</button>
-      <p class="tiny">Accounts save your stats, level, V-Bucks &amp; skins across matches.</p>
+      <p class="tiny">Accounts save your stats, level, V-Bucks &amp; skins across matches. Works on mobile too — touch controls included.</p>
     </div>
     <div class="features">
       <div>🗺️ 4 km² island · 10 POIs</div><div>🌩️ Shrinking storm</div><div>🔨 Build &amp; harvest</div>
-      <div>🔫 6 weapons · 5 rarities</div><div>🤖 Bots fill every match</div><div>👥 Real multiplayer</div>
+      <div>🔫 6 weapons · 5 rarities</div><div>🤖 Bots fill every match</div><div>👥 Real multiplayer</div><div>📱 Mobile controls</div><div>🎬 Cinematic graphics</div>
     </div>
   </div>
 </div>
@@ -50,6 +54,7 @@
       <div class="avatar" id="lobbyAvatar">?</div>
       <div><div id="lobbyName">Player</div><div id="lobbyLevel" class="tiny">Level 1</div></div>
       <div class="vbucks">🪙 <span id="lobbyVbucks">0</span></div>
+      <button id="btnSettingsLobby" class="btn ghost sm">⚙️ Settings</button>
       <button id="btnLogout" class="btn ghost sm">Log out</button>
     </div>
   </header>
@@ -62,6 +67,7 @@
     </aside>
     <main class="lobby-center">
       <div class="hero-card">
+        <div class="hero-badge">SEASON 1 · ZERO BUILD? NEVER.</div>
         <h1>SOLO BATTLE ROYALE</h1>
         <p>Drop from the Battle Bus, loot up, build cover and be the last one standing on FortWorld Island.</p>
         <button id="btnPlay" class="btn play">▶ &nbsp;PLAY</button>
@@ -70,14 +76,36 @@
           <div id="queuePlayers" class="tiny"></div>
           <button id="btnCancelQueue" class="btn ghost sm">Cancel</button>
         </div>
+        <div class="hero-settings">
+          <label>Graphics
+            <select id="qualitySelect">
+              <option value="auto">Auto (recommended)</option>
+              <option value="cinematic">Cinematic 🎬</option>
+              <option value="balanced">Balanced ⚖️</option>
+              <option value="performance">Performance ⚡</option>
+            </select>
+          </label>
+          <label>Touch controls
+            <select id="touchSelect">
+              <option value="auto">Auto-detect</option>
+              <option value="on">Always on</option>
+              <option value="off">Off (keyboard/mouse)</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div class="panel howto">
         <h3>🎮 Controls</h3>
-        <div class="controls-grid">
-          <span><b>W A S D</b> Move</span><span><b>Mouse</b> Look</span><span><b>Left Click</b> Shoot / Use</span>
+        <div class="controls-grid desktop-controls">
+          <span><b>W A S D</b> Move</span><span><b>Mouse</b> Look · <b>Right-click</b> Aim</span><span><b>Left Click</b> Shoot / Use</span>
           <span><b>Shift</b> Sprint</span><span><b>Space</b> Jump / Deploy glider</span><span><b>F</b> Jump from bus</span>
           <span><b>E</b> Pick up loot</span><span><b>R</b> Reload</span><span><b>1–5</b> Inventory slots</span>
-          <span><b>Q</b> Build mode</span><span><b>F</b> (in build) Cycle wall/floor/ramp</span><span><b>X</b> (in build) Material</span>
+          <span><b>Q</b> Build mode</span><span><b>F</b> (in build) Cycle wall/floor/ramp</span><span><b>X</b> (in build) Material · <b>P</b> Settings</span>
+        </div>
+        <div class="controls-grid mobile-controls-help">
+          <span><b>Left stick</b> Move (push far = sprint)</span><span><b>Drag right side</b> Look</span><span><b>🔥 FIRE</b> Shoot / use / build</span>
+          <span><b>◎ AIM</b> Aim down sights</span><span><b>⬆ JUMP</b> Jump / glider / leave bus</span><span><b>✋</b> Pick up loot</span>
+          <span><b>🔨</b> Build mode · tap shape/material buttons</span><span><b>Slots</b> Tap inventory to switch weapons</span>
         </div>
       </div>
     </main>
@@ -94,15 +122,25 @@
 
 <!-- ============ GAME HUD ============ -->
 <div id="hud" class="hidden">
-  <div id="crosshair"><span></span><span></span><span></span><span></span></div>
+  <div id="colorGrade"></div>
+  <div id="crosshair"><span></span><span></span><span></span><span></span><i id="hitDot"></i></div>
   <div id="hitmarker">✕</div>
+  <div id="damageNums"></div>
+  <div id="killBanner" class="hidden">ELIMINATION</div>
   <div id="damageVignette"></div>
+  <div id="lowHealth"></div>
 
   <div class="hud-top-center">
-    <div id="stormInfo" class="storm-info">⛈️ Storm: —</div>
-    <div id="aliveInfo" class="alive-info">👥 24</div>
-    <div id="compass" class="compass">N</div>
+    <div id="compassStrip"><div id="compassTape"></div><div class="compass-needle">▼</div></div>
+    <div class="hud-chips">
+      <div id="stormInfo" class="storm-info">⛈️ Storm: —</div>
+      <div id="aliveInfo" class="alive-info">👥 24</div>
+      <div id="compass" class="compass">N</div>
+      <div id="fpsBox" class="compass hidden">60 FPS</div>
+    </div>
   </div>
+  <button id="btnPauseHud" title="Settings (P)">⚙️</button>
+  <button id="btnFullscreenHud" title="Fullscreen">⛶</button>
 
   <canvas id="minimap" width="190" height="190"></canvas>
   <div id="killfeed"></div>
@@ -124,7 +162,53 @@
   <div id="notice" class="notice hidden"></div>
   <div id="usingBox" class="hidden"><div>Using item…</div><div class="use-track"><div id="useBar"></div></div></div>
   <div id="buildBox" class="build-box hidden">🔨 BUILD: <b id="buildType">Wall</b> · Material: <b id="buildMat">wood</b> · Click to place (10) · F cycle · X material · Q exit</div>
-  <div id="busPrompt" class="bus-prompt hidden">🚌 Riding the Battle Bus…<br><b>Press F or SPACE to jump!</b></div>
+  <div id="busPrompt" class="bus-prompt hidden">🚌 Riding the Battle Bus…<br><b class="desktop-only">Press F or SPACE to jump!</b><b class="touch-only">Tap JUMP to drop!</b></div>
+
+  <!-- ======== MOBILE / TOUCH CONTROLS ======== -->
+  <div id="mobileControls">
+    <div id="lookZone"></div>
+    <div id="joyZone"><div id="joyBase"><div id="joyNub">✥</div></div></div>
+    <div class="touch-cluster">
+      <button id="btnFire" class="tbtn fire">🔥<small>FIRE</small></button>
+      <button id="btnAim" class="tbtn aim">◎<small>AIM</small></button>
+      <button id="btnJumpT" class="tbtn jump">⬆<small>JUMP</small></button>
+      <button id="btnInteract" class="tbtn act">✋<small>LOOT</small></button>
+      <button id="btnReloadT" class="tbtn small">⟳<small>RELOAD</small></button>
+      <button id="btnBuildT" class="tbtn small">🔨<small>BUILD</small></button>
+      <button id="btnCrouchT" class="tbtn small">⬇<small>CROUCH</small></button>
+      <button id="btnSprintT" class="tbtn small">»<small>SPRINT</small></button>
+      <button id="btnCycleT" class="tbtn small build-extra hidden">▦<small>SHAPE</small></button>
+      <button id="btnMatT" class="tbtn small build-extra hidden">🪵<small>MAT</small></button>
+      <button id="btnUseT" class="tbtn small">✚<small>USE</small></button>
+    </div>
+    <button id="btnJumpBus">🪂 JUMP FROM BUS</button>
+  </div>
+</div>
+<div id="rotatePrompt">📱 Rotate to landscape for the best experience</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="settingsScreen" class="screen hidden overlay">
+  <div class="end-card settings-card">
+    <h2>⚙️ SETTINGS</h2>
+    <p class="tiny">In a match? The battle keeps going — close when ready. Graphics changes fully apply next match.</p>
+    <div class="set-row"><label>Graphics quality</label>
+      <select id="setQuality">
+        <option value="auto">Auto</option><option value="cinematic">Cinematic 🎬</option>
+        <option value="balanced">Balanced ⚖️</option><option value="performance">Performance ⚡</option>
+      </select></div>
+    <div class="set-row"><label>Touch controls</label>
+      <select id="setTouch">
+        <option value="auto">Auto-detect</option><option value="on">Always on</option><option value="off">Off</option>
+      </select></div>
+    <div class="set-row"><label>Look sensitivity <b id="sensVal"></b></label>
+      <input id="setSens" type="range" min="0.3" max="2.5" step="0.1"></div>
+    <div class="set-row"><label>Volume <b id="volVal"></b></label>
+      <input id="setVol" type="range" min="0" max="100" step="5"></div>
+    <div class="set-row check"><label>Invert look Y</label><input id="setInvert" type="checkbox"></div>
+    <div class="set-row check"><label>Show FPS</label><input id="setFps" type="checkbox"></div>
+    <button id="btnCloseSettings" class="btn primary big">✔ DONE</button>
+    <button id="btnQuitMatch" class="btn ghost big">Leave / Back to lobby</button>
+  </div>
 </div>
 
 <!-- ============ END SCREENS ============ -->
@@ -138,7 +222,7 @@
 </div>
 
 <div id="loadingScreen" class="screen hidden">
-  <div class="loading-wrap"><div class="logo">FORT<span>WORLD</span></div><div class="loading-bar"><div id="loadingFill"></div></div><p id="loadingText">Building island…</p></div>
+  <div class="loading-wrap"><div class="logo">FORT<span>WORLD</span></div><div class="loading-bar"><div id="loadingFill"></div></div><p id="loadingText">Building island…</p><p id="loadingTip" class="tiny">Tip: Legendary (orange) weapons hit up to 38% harder.</p></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
