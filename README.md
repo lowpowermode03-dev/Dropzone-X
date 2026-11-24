@@ -75,6 +75,7 @@ Full touch support, auto-detected (also switchable in Settings):
 - **Towns feel alive**: denser building layouts, wooden welcome signs with every town's name, benches, bins, hydrants and plaza hedges
 - **Atmosphere**: matched sky/fog horizon color (0xb9cfe9, 260–3500 m) for true aerial perspective; **texel-snapped shadow follow** (no more shadow swimming) with quality-scaled shadow frustums
 - **More clutter**: 2,400+ pebbles, fallen twigs & branches, plus everything from the detail pass
+- **Real GLB models**: the pickaxe is now a true binary glTF model (`public/models/pickaxe.glb` — curved steel blade, tapered wooden handle, leather grip wraps, PBR materials) loaded by a built-in dependency-free GLB loader (`public/js/gltf.js`), with the old procedural mesh kept only as an offline fallback
 
 ## 🔄 REBORN — Third-Person Revamp
 - **Third-person over-shoulder camera** (toggle `V` for first-person): you actually see your skin, third-person shooting originates from your character

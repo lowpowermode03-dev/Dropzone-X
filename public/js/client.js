@@ -1,6 +1,7 @@
 // FortWorld client: auth, lobby, shop, FPS gameplay, building, HUD.
 import * as THREE from 'three';
 import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS, RIVERS, riverAt } from './world.js';
+import { loadGLB } from './gltf.js';
 
 const $ = (id) => document.getElementById(id);
 const RARITY_COLORS = ['#b1b1b1', '#60aa3c', '#4d8fd1', '#b04dd1', '#e8a33d'];
@@ -811,12 +812,28 @@ function makeBus() {
   return g;
 }
 
+// Real GLB pickaxe (public/models/pickaxe.glb) — replaces the old stick-and-box placeholder.
+// Loads async during menus; procedural fallback below stays if the fetch ever fails.
+let pickaxeGLB = null;
+loadGLB('/models/pickaxe.glb').then((m) => {
+  pickaxeGLB = m;
+  try { // swap any pickaxe already in hand for the real model
+    if (typeof G !== 'undefined' && G.vmWeapon === 'pickaxe') buildViewmodel('pickaxe');
+    if (typeof G !== 'undefined' && G.selfMesh && slotWeaponId() === 'pickaxe') updateSelfWeapon('pickaxe');
+  } catch (e) { /* next weapon rebuild picks it up anyway */ }
+}).catch(() => { /* offline / blocked: keep the fallback */ });
+
 function makeGunModel(weaponId) {
   const grp = new THREE.Group();
   const dark = new THREE.MeshStandardMaterial({ color: 0x23242e, roughness: 0.38, metalness: 0.65 });
   const accent = new THREE.MeshStandardMaterial({ color: 0x596273, roughness: 0.3, metalness: 0.7 });
   const add = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (rx) m.rotation.x = rx; m.castShadow = true; grp.add(m); return m; };
   if (weaponId === 'pickaxe') {
+    if (pickaxeGLB) {
+      const model = pickaxeGLB.clone(true);
+      model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      return model;
+    }
     add(new THREE.CylinderGeometry(0.045, 0.055, 0.95), new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.9 }), 0, -0.15, 0.1, 0.5);
     add(new THREE.BoxGeometry(0.85, 0.11, 0.11), accent, 0, 0.22, -0.05);
     return grp;
@@ -949,7 +966,7 @@ function buildViewmodel(weaponId) {
   // rarity accent stripe
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.035, 0.5), new THREE.MeshStandardMaterial({ color: new THREE.Color(RARITY_COLORS[rarity]), emissive: new THREE.Color(RARITY_COLORS[rarity]), emissiveIntensity: 0.7, roughness: 0.4 }));
   stripe.position.set(0, 0.12, 0.1);
-  grp.add(stripe);
+  if (weaponId !== 'pickaxe') grp.add(stripe); // GLB pickaxe has its own accent band
   // gloved hands
   const glove = new THREE.MeshStandardMaterial({ color: 0x333a4a, roughness: 0.85 });
   const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.16), glove); h1.position.set(0.02, -0.16, 0.16);
