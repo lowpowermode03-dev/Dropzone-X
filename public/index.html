@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FortWorld — Browser Battle Royale</title>
+<link rel="stylesheet" href="/css/style.css">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
+</head>
+<body>
+
+<!-- ============ AUTH ============ -->
+<div id="authScreen" class="screen">
+  <div class="auth-wrap">
+    <div class="logo">FORT<span>WORLD</span></div>
+    <div class="tagline">100% Browser Battle Royale · Huge Island · Build · Loot · Last One Standing Wins</div>
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button id="tabLogin" class="tab active">Log In</button>
+        <button id="tabRegister" class="tab">Sign Up</button>
+      </div>
+      <div id="loginForm">
+        <input id="loginUser" placeholder="Username" autocomplete="username">
+        <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password">
+        <button id="btnLogin" class="btn primary big">LOG IN &amp; PLAY</button>
+      </div>
+      <div id="registerForm" class="hidden">
+        <input id="regUser" placeholder="Username (3-16 chars)" autocomplete="username">
+        <input id="regEmail" type="email" placeholder="Email (optional)" autocomplete="email">
+        <input id="regPass" type="password" placeholder="Password (6+ chars)" autocomplete="new-password">
+        <button id="btnRegister" class="btn primary big">CREATE ACCOUNT</button>
+      </div>
+      <div id="authError" class="error"></div>
+      <div class="divider"><span>or</span></div>
+      <button id="btnGuest" class="btn ghost big">▶ PLAY AS GUEST (instant)</button>
+      <p class="tiny">Accounts save your stats, level, V-Bucks &amp; skins across matches.</p>
+    </div>
+    <div class="features">
+      <div>🗺️ 4 km² island · 10 POIs</div><div>🌩️ Shrinking storm</div><div>🔨 Build &amp; harvest</div>
+      <div>🔫 6 weapons · 5 rarities</div><div>🤖 Bots fill every match</div><div>👥 Real multiplayer</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LOBBY ============ -->
+<div id="lobbyScreen" class="screen hidden">
+  <header class="lobby-top">
+    <div class="logo small">FORT<span>WORLD</span></div>
+    <div class="player-chip">
+      <div class="avatar" id="lobbyAvatar">?</div>
+      <div><div id="lobbyName">Player</div><div id="lobbyLevel" class="tiny">Level 1</div></div>
+      <div class="vbucks">🪙 <span id="lobbyVbucks">0</span></div>
+      <button id="btnLogout" class="btn ghost sm">Log out</button>
+    </div>
+  </header>
+  <div class="lobby-grid">
+    <aside class="panel stats-panel">
+      <h3>📊 Your Stats</h3>
+      <div id="myStats" class="stats-list"></div>
+      <h3>🏆 Leaderboard</h3>
+      <div id="leaderboard" class="lb-list"></div>
+    </aside>
+    <main class="lobby-center">
+      <div class="hero-card">
+        <h1>SOLO BATTLE ROYALE</h1>
+        <p>Drop from the Battle Bus, loot up, build cover and be the last one standing on FortWorld Island.</p>
+        <button id="btnPlay" class="btn play">▶ &nbsp;PLAY</button>
+        <div id="queueBox" class="hidden">
+          <div class="queue-anim">Finding match<span class="dots"></span></div>
+          <div id="queuePlayers" class="tiny"></div>
+          <button id="btnCancelQueue" class="btn ghost sm">Cancel</button>
+        </div>
+      </div>
+      <div class="panel howto">
+        <h3>🎮 Controls</h3>
+        <div class="controls-grid">
+          <span><b>W A S D</b> Move</span><span><b>Mouse</b> Look</span><span><b>Left Click</b> Shoot / Use</span>
+          <span><b>Shift</b> Sprint</span><span><b>Space</b> Jump / Deploy glider</span><span><b>F</b> Jump from bus</span>
+          <span><b>E</b> Pick up loot</span><span><b>R</b> Reload</span><span><b>1–5</b> Inventory slots</span>
+          <span><b>Q</b> Build mode</span><span><b>F</b> (in build) Cycle wall/floor/ramp</span><span><b>X</b> (in build) Material</span>
+        </div>
+      </div>
+    </main>
+    <aside class="panel shop-panel">
+      <h3>🛒 Item Shop — Skins</h3>
+      <div id="skinGrid" class="skin-grid"></div>
+    </aside>
+  </div>
+  <div class="panel chat-panel">
+    <div id="chatLog" class="chat-log"></div>
+    <div class="chat-row"><input id="chatInput" placeholder="Chat with everyone… (Enter to send)" maxlength="120"><button id="btnChat" class="btn ghost sm">Send</button></div>
+  </div>
+</div>
+
+<!-- ============ GAME HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="crosshair"><span></span><span></span><span></span><span></span></div>
+  <div id="hitmarker">✕</div>
+  <div id="damageVignette"></div>
+
+  <div class="hud-top-center">
+    <div id="stormInfo" class="storm-info">⛈️ Storm: —</div>
+    <div id="aliveInfo" class="alive-info">👥 24</div>
+    <div id="compass" class="compass">N</div>
+  </div>
+
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="killfeed"></div>
+
+  <div class="hud-bottom-left">
+    <div class="bars">
+      <div class="bar shield"><div id="shieldBar"></div><span id="shieldText">0</span></div>
+      <div class="bar health"><div id="healthBar"></div><span id="healthText">100</span></div>
+    </div>
+    <div id="mats" class="mats">🪵 0 &nbsp; 🧱 0 &nbsp; 🔩 0</div>
+  </div>
+
+  <div class="hud-bottom-right">
+    <div id="ammoBox" class="ammo-box"><span id="ammoMag">—</span><span id="ammoReserve" class="tiny">/ —</span><div id="weaponName" class="tiny">Pickaxe</div></div>
+    <div id="inventory" class="inventory"></div>
+  </div>
+
+  <div id="prompt" class="prompt hidden"></div>
+  <div id="notice" class="notice hidden"></div>
+  <div id="usingBox" class="hidden"><div>Using item…</div><div class="use-track"><div id="useBar"></div></div></div>
+  <div id="buildBox" class="build-box hidden">🔨 BUILD: <b id="buildType">Wall</b> · Material: <b id="buildMat">wood</b> · Click to place (10) · F cycle · X material · Q exit</div>
+  <div id="busPrompt" class="bus-prompt hidden">🚌 Riding the Battle Bus…<br><b>Press F or SPACE to jump!</b></div>
+</div>
+
+<!-- ============ END SCREENS ============ -->
+<div id="endScreen" class="screen hidden overlay">
+  <div class="end-card">
+    <h1 id="endTitle">#24</h1>
+    <p id="endSub">You were eliminated</p>
+    <div id="endStats" class="stats-list"></div>
+    <button id="btnBackLobby" class="btn primary big">BACK TO LOBBY</button>
+  </div>
+</div>
+
+<div id="loadingScreen" class="screen hidden">
+  <div class="loading-wrap"><div class="logo">FORT<span>WORLD</span></div><div class="loading-bar"><div id="loadingFill"></div></div><p id="loadingText">Building island…</p></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/js/client.js"></script>
+</body>
+</html>
