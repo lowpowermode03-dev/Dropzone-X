@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const sb = require('./supabase');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -25,7 +26,39 @@ function writeJson(file, data) {
 let users = readJson(USERS_FILE, []);
 let matches = readJson(MATCHES_FILE, []);
 
-function saveUsers() { writeJson(USERS_FILE, users); }
+// Backend: 'supabase' when env-configured AND reachable at boot, else local JSON.
+let backend = sb.enabled ? 'supabase' : 'json';
+let sbTimer = null;
+const isSupabase = () => backend === 'supabase';
+
+async function init() {
+  if (!sb.enabled) { console.log('[db] Local JSON database (set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to use Supabase)'); return; }
+  try {
+    const state = await sb.fetchState();
+    if (state.users.length || state.matches.length) {
+      users = state.users; matches = state.matches;
+      users.forEach(ensureCosmetics);
+      console.log(`[db] ☁️  Supabase connected — ${users.length} players, ${matches.length} matches loaded`);
+    } else if (users.length) {
+      users.forEach(ensureCosmetics);
+      await sb.upsertUsers(users);
+      console.log(`[db] ☁️  Supabase connected — migrated ${users.length} local players`);
+    } else {
+      console.log('[db] ☁️  Supabase connected (fresh database)');
+    }
+  } catch (e) {
+    backend = 'json';
+    console.error('[db] Supabase unavailable (' + e.message + ') — falling back to local JSON');
+  }
+}
+
+function saveUsers() {
+  writeJson(USERS_FILE, users); // local cache / offline fallback + migration seed
+  if (backend !== 'supabase') return;
+  clearTimeout(sbTimer);
+  sbTimer = setTimeout(() => { sb.upsertUsers(users).catch(e => console.error('[db] Supabase upsert failed:', e.message)); }, 250);
+  if (sbTimer.unref) sbTimer.unref();
+}
 function saveMatches() { writeJson(MATCHES_FILE, matches.slice(-500)); }
 
 const SKINS = [
@@ -157,8 +190,10 @@ function addMatchResult(userId, { placement, kills, damage, won, totalPlayers })
   if (u.xp >= need) { u.xp -= need; u.level += 1; u.vbucks += 100; }
   if (won) u.vbucks += 50;
   saveUsers();
-  matches.push({ userId, placement, kills, damage, won, totalPlayers, at: Date.now() });
+  const matchRow = { userId, placement, kills, damage, won, totalPlayers, at: Date.now() };
+  matches.push(matchRow);
   saveMatches();
+  if (backend === 'supabase') sb.insertMatch(matchRow).catch(e => console.error('[db] Supabase match insert failed:', e.message));
 }
 
 function buyCosmetic(userId, kind, id) {
@@ -199,4 +234,4 @@ function leaderboard(limit = 20) {
     .map(u => ({ username: u.username, level: u.level, wins: u.stats.wins, kills: u.stats.kills, matches: u.stats.matches, kd: u.stats.matches ? (u.stats.kills / u.stats.matches).toFixed(2) : '0.00' }));
 }
 
-module.exports = { register, login, publicUser, getUserById, getUserByUsername, updateUser, addMatchResult, buySkin, buyCosmetic, equipCosmetic, leaderboard, SKINS, CHARACTERS, ARMORS, ENEMY_CHARACTERS, ENEMY_ARMORS, ENEMY_ROSTER };
+module.exports = { register, login, publicUser, getUserById, getUserByUsername, updateUser, addMatchResult, buySkin, buyCosmetic, equipCosmetic, leaderboard, init, isSupabase, SKINS, CHARACTERS, ARMORS, ENEMY_CHARACTERS, ENEMY_ARMORS, ENEMY_ROSTER };
