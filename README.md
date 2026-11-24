@@ -14,6 +14,26 @@ npm start
 
 Create an account, sign in as a guest, or log back in anytime — stats, level, XP, V-Bucks and skins persist between sessions.
 
+## 🎨 Key-Art Look (matches the Dropzone X hero art)
+
+The playable island is graded to match the generated key art (`public/img/hero.jpg`): turquoise sea, emerald-green lowlands with lime highlights, golden beaches, a lower snowline so the peaks read as one towering white massif, pink-gold sunset clouds, warm golden-hour sun, red/orange town rooftops, lavender distance haze, a saturation + warmth pass in the post pipeline, and the Battle Bus balloon repainted teal-and-white like the art.
+
+## ☁️ Supabase Setup (full backend — accounts, stats, cosmetics)
+
+Dropzone X can store **everything** in Supabase Postgres: accounts, stats, level/XP, V-Bucks, skins, characters and armor (`players` table) plus match history (`matches` table). Without Supabase env vars it uses the local JSON database in `data/`, so it still runs anywhere.
+
+1. Go to [supabase.com](https://supabase.com) → sign in → **New project**. Pick a name (e.g. `dropzone-x`), set a database password, choose a region, and wait ~1 minute for provisioning.
+2. In your project, open **SQL Editor → New query**, paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. This creates the `players` and `matches` tables with Row Level Security locked down (only the server can touch them).
+3. Open **Project Settings → API** and copy two values: the **Project URL** and the **`service_role` key** (under "Project API keys"). ⚠️ The service-role key is a master key — server environment only, never put it in browser code, chat, or git.
+4. Give them to the game server as environment variables (see [`.env.example`](.env.example)):
+   ```bash
+   SUPABASE_URL=https://your-project-ref.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   ```
+   Locally you can put them in a `.env`-style export before starting; on a host (Render/Railway/Fly/etc.) add them in the dashboard's Environment settings.
+5. Start the game: `npm install && npm start`. The console should print `☁️ Supabase connected`. Any existing local accounts in `data/users.json` are **migrated automatically** on first connect.
+6. Verify: open `http://localhost:3000/api/health` — it should return `{"ok":true,"backend":"supabase"}`. Create a guest account, play, then check **Table Editor → players** in Supabase to see the row appear. If Supabase is ever unreachable, the server logs the error and safely falls back to the local JSON database.
+
 ## ⛰️ The Highlands (GTA-scale terrain pass)
 
 - **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (288 m), Kings Crown (243 m), Titan Peak (218 m), Razorback Ridge (207 m), Verde Highlands (205 m) and Solstice Peaks (175 m) — now shaped like real peaks: 3 radiating arête ridges each (Everest-style), fluted valleys, steep summit pyramids, and soft-terraced **cliff bands with benches and sheer drops**, plus geological strata coloring, talus fields of fallen rock at cliff bases, jagged summit crags, scree aprons, and snowfields above ~110 m that settle on the ledges

@@ -270,8 +270,8 @@ export function createSky(scene) {
       void main(){
         vec3 dir = normalize(vDir);
         float h = clamp(dir.y, -0.08, 1.0);
-        vec3 col = mix(vec3(0.98,0.72,0.45), vec3(0.35,0.62,0.98), smoothstep(0.0,0.55,h));
-        col = mix(col, vec3(0.10,0.26,0.72), smoothstep(0.45,1.0,h));
+        vec3 col = mix(vec3(1.0,0.76,0.52), vec3(0.36,0.62,0.99), smoothstep(0.0,0.55,h));
+        col = mix(col, vec3(0.12,0.28,0.74), smoothstep(0.45,1.0,h));
         float sd = max(dot(dir, uSunDir), 0.0);
         col += vec3(1.0,0.85,0.55) * pow(sd, 900.0) * 3.0;
         col += vec3(1.0,0.62,0.28) * pow(sd, 10.0) * 0.38;
@@ -281,8 +281,8 @@ export function createSky(scene) {
         float cl = fbm(uv * 1.35 + vec2(uTime*0.010, uTime*0.004));
         float cover = smoothstep(0.48, 0.72, cl);
         float shade = smoothstep(0.5, 0.85, fbm(uv * 3.1 - uTime*0.006));
-        vec3 cloudCol = mix(vec3(1.02), vec3(0.62,0.68,0.82), shade*0.8);
-        cloudCol += vec3(1.0,0.7,0.4) * pow(sd, 3.0) * 0.25;
+        vec3 cloudCol = mix(vec3(1.07,0.87,0.79), vec3(0.57,0.60,0.85), shade*0.85);
+        cloudCol += vec3(1.0,0.68,0.38) * pow(sd, 3.0) * 0.38;
         col = mix(col, cloudCol, cover * smoothstep(0.015, 0.22, dir.y) * 0.88);
         // high cirrus streaks
         float cir = fbm(vec2(uv.x*0.7 + uTime*0.014, uv.y*3.4));
@@ -324,7 +324,7 @@ export function createWater(scene) {
         vec3 N = normalize(vNormW);
         vec3 V = normalize(cameraPosition - vWorld);
         float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-        vec3 deep = vec3(0.015,0.22,0.46), shallow = vec3(0.12,0.62,0.85);
+        vec3 deep = vec3(0.0,0.30,0.52), shallow = vec3(0.06,0.78,0.86);
         vec3 col = mix(deep, shallow, clamp(fres*0.85 + 0.18, 0.0, 1.0));
         // sun specular (Blinn-Phong)
         vec3 H = normalize(uSunDir + V);
@@ -577,9 +577,9 @@ export function buildWorld(scene, data, quality = {}) {
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const cGrass = new THREE.Color(0x54b531), cGrass2 = new THREE.Color(0xa9dc4e), cSand = new THREE.Color(0xf2dc9e),
-    cRock = new THREE.Color(0x8a8578), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xf4f8ff), cDirt = new THREE.Color(0xa8834f), cScorch = new THREE.Color(0x77a83b),
-    cForest = new THREE.Color(0x2f7a2e), cScree = new THREE.Color(0xa49a86), cWet = new THREE.Color(0x4f4a33);
+  const cGrass = new THREE.Color(0x43b02c), cGrass2 = new THREE.Color(0xb9e356), cSand = new THREE.Color(0xf7d774),
+    cRock = new THREE.Color(0x8d8378), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xffffff), cDirt = new THREE.Color(0xa8834f), cScorch = new THREE.Color(0x77a83b),
+    cForest = new THREE.Color(0x1e6b30), cScree = new THREE.Color(0xa49a86), cWet = new THREE.Color(0x4f4a33);
   const tmp = new THREE.Color();
   const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
   for (let i = 0; i < pos.count; i++) {
@@ -598,7 +598,7 @@ export function buildWorld(scene, data, quality = {}) {
       tmp.lerp(cScree, smooth(28, 70, h) * 0.45 * (1 - slope));      // scree aprons
       tmp.lerp(cRock, Math.max(0, slope - 0.34) * 1.25);             // exposed cliffs
       tmp.lerp(cRockDark, smooth(45, 120, h) * slope * 0.55);       // high dark rock
-      const snow = smooth(96, 150, h + n * 26) * (1 - Math.max(0, slope - 0.55) * 1.6);
+      const snow = smooth(76, 126, h + n * 30) * (1 - Math.max(0, slope - 0.55) * 1.6);
       tmp.lerp(cSnow, Math.max(0, Math.min(1, snow)));               // snowfields & caps
       if (h > 55) tmp.lerp(cRock, smooth(55, 95, h) * 0.25);
       // geological strata bands on exposed mountain rock
@@ -657,7 +657,7 @@ export function buildWorld(scene, data, quality = {}) {
   /* ---- buildings (variants + doors + rooftop props) ---- */
   const facades = [facadeTextures(11, '#c8ccd4'), facadeTextures(23, '#cbb59a'), facadeTextures(37, '#aebfd0'), facadeTextures(51, '#d3a7a0')];
   const facadeMats = facades.map(f => new THREE.MeshStandardMaterial({ map: f.map, emissiveMap: f.emissive, emissive: new THREE.Color(0xffc98a), emissiveIntensity: 0.55, roughness: 0.88 }));
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x3f3a36, roughness: 1, bumpMap: detailBumpTex(), bumpScale: 0.8 });
+  const ROOF_COLORS = [0xb5442f, 0xd2691e, 0xc2571b, 0x8e3b46, 0x3f6d8e, 0x7a4a2f]; // key-art red/orange town roofs
   const unitBox = new THREE.BoxGeometry(1, 1, 1);
   const buildingsGroup = new THREE.Group();
   const acMesh = new THREE.InstancedMesh(unitBox, new THREE.MeshStandardMaterial({ color: 0x9aa2ac, roughness: 0.6, metalness: 0.5 }), Math.max(1, data.buildings.length));
@@ -671,7 +671,7 @@ export function buildWorld(scene, data, quality = {}) {
     m.scale.set(b.w, b.h, b.d);
     m.position.set(b.x, gy + b.h / 2 - 0.5, b.z);
     m.rotation.y = b.rot || 0; m.castShadow = true; m.receiveShadow = true;
-    const roof = new THREE.Mesh(unitBox, roofMat);
+    const roof = new THREE.Mesh(unitBox, new THREE.MeshStandardMaterial({ color: ROOF_COLORS[bi % ROOF_COLORS.length], roughness: 0.95, bumpMap: detailBumpTex(), bumpScale: 0.8 }));
     roof.scale.set(b.w + 1.6, 1.1, b.d + 1.6);
     roof.position.set(b.x, gy + b.h + 0.05, b.z); roof.rotation.y = b.rot || 0; roof.castShadow = true;
     buildingsGroup.add(m, roof);
@@ -892,7 +892,7 @@ export function buildWorld(scene, data, quality = {}) {
       uTile: { value: grassTile },
       uSunDir: { value: new THREE.Vector3(0.5, 0.62, 0.35).normalize() },
       uPois: { value: poiVecs },
-      fogColor: { value: new THREE.Color(0xb9cfe9) },
+      fogColor: { value: new THREE.Color(0xdcd7ee) },
       fogNear: { value: 320 },
       fogFar: { value: 4200 },
     },

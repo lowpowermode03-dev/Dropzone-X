@@ -594,7 +594,8 @@ function initPost() {
           col += texture2D(tGod, vUv).rgb * uGodK * vec3(1.0, 0.82, 0.58);
           col = aces(col * 1.06);
           float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-          col = mix(vec3(l), col, 1.13); // saturation pop
+          col = mix(vec3(l), col, 1.24); // saturation pop (key-art vibrancy)
+          col = mix(col, col * vec3(1.05, 0.99, 0.92), 0.55); // golden-hour warmth
           col = (col - 0.5) * 1.03 + 0.5;
           float vig = smoothstep(0.95, 0.35, length(d * vec2(1.12, 1.0)) * 1.35);
           col *= mix(0.74, 1.0, vig);
@@ -679,11 +680,11 @@ async function startMenuScene() {
     initRenderer();
     if (!G.renderer) return;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x9fc6ee, 320, 4200);
+    scene.fog = new THREE.Fog(0xdcd7ee, 260, 3500);
     G.menuScene = scene;
     createSky(scene); createWater(scene);
     scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4a7c43, 1.05));
-    const sun = new THREE.DirectionalLight(0xfff1cf, 2.2);
+    const sun = new THREE.DirectionalLight(0xffdfae, 2.2);
     sun.position.set(400, 700, 250); scene.add(sun);
     G.menuWorldRef = buildWorld(scene, data, { grass: 16000, seg: 128, aniso: 2 });
     G.menuCamera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 9000);
@@ -785,14 +786,14 @@ function startMatch(data) {
     G.pos.set(data.bus.x, data.bus.y, data.bus.z);
     G.remotes.clear(); G.loot.clear(); G.structures.clear(); G.self = null;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x9fc6ee, 320, 4200);
+    scene.fog = new THREE.Fog(0xdcd7ee, 260, 3500);
     G.scene = scene;
     G.skyMat = createSky(scene);
     G.waterMat = createWater(scene);
     const sw = createStormWall(scene); G.stormWall = sw;
     const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x4a7c43, 1.05); scene.add(hemi);
     const amb = new THREE.AmbientLight(0x8899bb, 0.25); scene.add(amb);
-    const sun = new THREE.DirectionalLight(0xfff1cf, 2.4);
+    const sun = new THREE.DirectionalLight(0xffdfae, 2.4);
     sun.position.set(400, 700, 250); sun.castShadow = true;
     const q = qualityPreset();
     sun.shadow.mapSize.set(q.shadow, q.shadow);
@@ -843,16 +844,19 @@ function startMatch(data) {
 
 function makeBus() {
   const g = new THREE.Group();
-  const balloon = new THREE.Mesh(new THREE.SphereGeometry(13, 20, 16), new THREE.MeshStandardMaterial({ color: 0x2f7fe0, roughness: 0.5 }));
+  const balloon = new THREE.Mesh(new THREE.SphereGeometry(13, 20, 16), new THREE.MeshStandardMaterial({ color: 0xf6fbff, roughness: 0.45 }));
   balloon.scale.set(1.5, 1, 1); balloon.position.y = 16;
-  const stripe = new THREE.Mesh(new THREE.SphereGeometry(13.15, 20, 8, 0, Math.PI * 2, 1.2, 0.7), new THREE.MeshStandardMaterial({ color: 0xffd23f }));
-  stripe.scale.copy(balloon.scale); stripe.position.y = 16;
+  const tealMat = new THREE.MeshStandardMaterial({ color: 0x2ec4c6, roughness: 0.45 });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(13.1, 20, 8, 0, Math.PI * 2, 0, 1.12), tealMat); // teal crown, like the key art
+  cap.scale.copy(balloon.scale); cap.position.y = 16;
+  const band = new THREE.Mesh(new THREE.SphereGeometry(13.12, 20, 8, 0, Math.PI * 2, 1.32, 0.5), tealMat);
+  band.scale.copy(balloon.scale); band.position.y = 16;
   const bus = new THREE.Mesh(new THREE.BoxGeometry(15, 4.2, 4.6), new THREE.MeshStandardMaterial({ color: 0x3b6fd4 }));
   const roof = new THREE.Mesh(new THREE.BoxGeometry(15.4, 0.7, 5), new THREE.MeshStandardMaterial({ color: 0xffd23f }));
   roof.position.y = 2.4;
   const winMat = new THREE.MeshStandardMaterial({ color: 0xbfe9ff, emissive: 0x6fb7ff, emissiveIntensity: 0.5 });
   for (let i = -3; i <= 3; i++) { const w = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 4.75), winMat); w.position.set(i * 2, 0.5, 0); bus.add(w); }
-  bus.add(roof); g.add(balloon, stripe, bus);
+  bus.add(roof); g.add(balloon, cap, band, bus);
   return g;
 }
 

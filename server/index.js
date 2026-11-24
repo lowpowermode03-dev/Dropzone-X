@@ -157,7 +157,12 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🎮 Dropzone X server running on http://0.0.0.0:${PORT}`);
-  console.log(`   Map: 4000x4000 | POIs: 10 | Bots fill matches to 24 fighters\n`);
+app.get('/api/health', (req, res) => res.json({ ok: true, backend: db.isSupabase() ? 'supabase' : 'json' }));
+
+db.init().then(() => {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🎮 Dropzone X server running on http://0.0.0.0:${PORT}`);
+    console.log(`   Map: 4000x4000 | POIs: 10 | Bots fill matches to 24 fighters`);
+    console.log(`   Database: ${db.isSupabase() ? '☁️  Supabase (Postgres)' : '💾 Local JSON (data/)'}\n`);
+  });
 });
