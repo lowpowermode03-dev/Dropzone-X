@@ -26,7 +26,7 @@ const HILLS = [
 
 // Mountain massifs — real playable terrain (peaks ~180-290m). MUST match client world.js.
 const MOUNTAINS = [
-  { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 235 },
+  { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 215 },
   { name: 'Razorback Ridge', x: -1550, z: -1250, r: 520, h: 190 },
   { name: 'Titan Peak', x: 850, z: -1600, r: 580, h: 210 },
   { name: 'Kings Crown', x: 1550, z: 150, r: 560, h: 180 },
@@ -43,21 +43,44 @@ function terrainHeight(x, z) {
     const d2 = dx * dx + dz * dz;
     h += hill.h * Math.exp(-d2 / (hill.r * hill.r));
   }
-  // mountain massifs with ridged detail
+  // Everest-style massifs: cone body, radiating arete ridges, fluted valleys,
+  // steep summit pyramid, soft terracing that forms cliff bands & benches.
+  // MUST match client world.js exactly.
   let mMask = 0, mHeight = 0;
-  for (const peak of MOUNTAINS) {
+  for (let mi = 0; mi < MOUNTAINS.length; mi++) {
+    const peak = MOUNTAINS[mi];
     const dx = x - peak.x, dz = z - peak.z;
-    const d2 = dx * dx + dz * dz;
-    const fall = Math.exp(-d2 / (peak.r * peak.r));
-    const shaped = fall * fall * (3 - 2 * fall);
-    mHeight += peak.h * shaped;
-    if (shaped > mMask) mMask = shaped;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const R = peak.r * 1.55;
+    if (d >= R) continue;
+    const p = 1 - d / R; // 1 at summit -> 0 at rim
+    const ang = Math.atan2(dz, dx);
+    const mid = Math.sin(Math.PI * Math.min(1, p * 1.12)); // fades at rim & summit
+    let crest = 0;
+    for (let k = 0; k < 3; k++) {
+      const rd = mi * 2.39996 + k * 2.094 + Math.sin(mi * 7.3 + k * 3.1) * 0.35;
+      const da = Math.atan2(Math.sin(ang - rd), Math.cos(ang - rd));
+      const g = Math.exp(-(da * da) / 0.09);
+      if (g > crest) crest = g;
+    }
+    let mh = peak.h * Math.pow(p, 1.35) * (0.82 + 0.18 * (1 - mid) + 0.18 * crest * mid);
+    mh += peak.h * 0.30 * crest * Math.pow(mid, 1.4); // aretes stand proud of the faces
+    const top = Math.max(0, (p - 0.55) / 0.45);
+    mh += peak.h * 0.16 * top * top; // summit pyramid
+    // soft terracing -> cliff bands with benches (fades at rim & point)
+    const tStep = 6.5;
+    const tt = mh / tStep, tf = Math.floor(tt), tfr = tt - tf;
+    const terr = (tf + tfr * tfr * (3 - 2 * tfr)) * tStep;
+    mh += (terr - mh) * 0.48 * Math.min(1, p * 3) * (1 - top * 0.7);
+    mHeight += mh;
+    const mHere = Math.pow(p, 1.5);
+    if (mHere > mMask) mMask = mHere;
   }
   if (mMask > 0.01) {
     const rn1 = 1 - Math.abs(Math.sin(x * 0.009 + Math.sin(z * 0.007) * 1.7));
     const rn2 = 1 - Math.abs(Math.cos(z * 0.011 + Math.sin(x * 0.005) * 1.3));
     const ridge = rn1 * 0.62 + rn2 * 0.38;
-    mHeight += mMask * (ridge - 0.48) * 44;
+    mHeight += mMask * (ridge - 0.48) * 40;
     mHeight += mMask * Math.sin(x * 0.045 + z * 0.033) * 3.5;
   }
   h += mHeight;

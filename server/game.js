@@ -60,7 +60,7 @@ class Room {
     this.nodeHealth = new Map(); // "tree:12" -> hp
     this.startTimer = null;
     this.tickTimer = null;
-    this.bus = { x: -1900, z: (Math.random() - 0.5) * 1400, y: 320, speed: 95, dir: 1 };
+    this.bus = { x: -1900, z: (Math.random() - 0.5) * 1400, y: 345, speed: 95, dir: 1 };
     this.storm = { phaseIdx: -1, state: 'idle', timer: 20, cx: 0, cz: 0, radius: 1900, tcx: 0, tcz: 0, tradius: 1900, fromRadius: 1900, dps: 0, shrinkTotal: 1, shrinkElapsed: 0 };
     this.startedAt = 0;
     this.totalFighters = 0;

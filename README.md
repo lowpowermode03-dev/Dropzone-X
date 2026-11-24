@@ -16,7 +16,7 @@ Create an account, sign in as a guest, or log back in anytime — stats, level, 
 
 ## ⛰️ The Highlands (GTA-scale terrain pass)
 
-- **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (275 m), Kings Crown (212 m), Razorback Ridge, Titan Peak, Verde Highlands and Solstice Peaks — with ridged-noise crags, scree aprons, cliff faces, dark alpine forest floors and snowfields above ~110 m
+- **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (288 m), Kings Crown (243 m), Titan Peak (218 m), Razorback Ridge (207 m), Verde Highlands (205 m) and Solstice Peaks (175 m) — now shaped like real peaks: 3 radiating arête ridges each (Everest-style), fluted valleys, steep summit pyramids, and soft-terraced **cliff bands with benches and sheer drops**, plus geological strata coloring, talus fields of fallen rock at cliff bases, jagged summit crags, scree aprons, and snowfields above ~110 m that settle on the ledges
 - **Layered distant ridge backdrops** ringing the island for that open-world horizon depth, plus drifting clouds and birds circling thermals over the summits
 - **~5,000 decorative pines** thickening on mountain slopes (above the harvestable treeline rules), 1,000+ cliff boulders on steep faces
 - **Two animated waterfalls** that carve their own downhill path from the highlands with scrolling foam shaders and plunge-pool glow

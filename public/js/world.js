@@ -10,7 +10,7 @@ const HILLS = [
   { x: 1300, z: 300, r: 550, h: 45 },
 ];
 export const MOUNTAINS = [
-  { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 235 },
+  { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 215 },
   { name: 'Razorback Ridge', x: -1550, z: -1250, r: 520, h: 190 },
   { name: 'Titan Peak', x: 850, z: -1600, r: 580, h: 210 },
   { name: 'Kings Crown', x: 1550, z: 150, r: 560, h: 180 },
@@ -23,20 +23,44 @@ export function terrainHeight(x, z) {
     const dx = x - hill.x, dz = z - hill.z;
     h += hill.h * Math.exp(-(dx * dx + dz * dz) / (hill.r * hill.r));
   }
+  // Everest-style massifs: cone body, radiating arete ridges, fluted valleys,
+  // steep summit pyramid, soft terracing that forms cliff bands & benches.
+  // MUST match server/map.js exactly.
   let mMask = 0, mHeight = 0;
-  for (const peak of MOUNTAINS) {
+  for (let mi = 0; mi < MOUNTAINS.length; mi++) {
+    const peak = MOUNTAINS[mi];
     const dx = x - peak.x, dz = z - peak.z;
-    const d2 = dx * dx + dz * dz;
-    const fall = Math.exp(-d2 / (peak.r * peak.r));
-    const shaped = fall * fall * (3 - 2 * fall);
-    mHeight += peak.h * shaped;
-    if (shaped > mMask) mMask = shaped;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const R = peak.r * 1.55;
+    if (d >= R) continue;
+    const p = 1 - d / R; // 1 at summit -> 0 at rim
+    const ang = Math.atan2(dz, dx);
+    const mid = Math.sin(Math.PI * Math.min(1, p * 1.12)); // fades at rim & summit
+    let crest = 0;
+    for (let k = 0; k < 3; k++) {
+      const rd = mi * 2.39996 + k * 2.094 + Math.sin(mi * 7.3 + k * 3.1) * 0.35;
+      const da = Math.atan2(Math.sin(ang - rd), Math.cos(ang - rd));
+      const g = Math.exp(-(da * da) / 0.09);
+      if (g > crest) crest = g;
+    }
+    let mh = peak.h * Math.pow(p, 1.35) * (0.82 + 0.18 * (1 - mid) + 0.18 * crest * mid);
+    mh += peak.h * 0.30 * crest * Math.pow(mid, 1.4); // aretes stand proud of the faces
+    const top = Math.max(0, (p - 0.55) / 0.45);
+    mh += peak.h * 0.16 * top * top; // summit pyramid
+    // soft terracing -> cliff bands with benches (fades at rim & point)
+    const tStep = 6.5;
+    const tt = mh / tStep, tf = Math.floor(tt), tfr = tt - tf;
+    const terr = (tf + tfr * tfr * (3 - 2 * tfr)) * tStep;
+    mh += (terr - mh) * 0.48 * Math.min(1, p * 3) * (1 - top * 0.7);
+    mHeight += mh;
+    const mHere = Math.pow(p, 1.5);
+    if (mHere > mMask) mMask = mHere;
   }
   if (mMask > 0.01) {
     const rn1 = 1 - Math.abs(Math.sin(x * 0.009 + Math.sin(z * 0.007) * 1.7));
     const rn2 = 1 - Math.abs(Math.cos(z * 0.011 + Math.sin(x * 0.005) * 1.3));
     const ridge = rn1 * 0.62 + rn2 * 0.38;
-    mHeight += mMask * (ridge - 0.48) * 44;
+    mHeight += mMask * (ridge - 0.48) * 40;
     mHeight += mMask * Math.sin(x * 0.045 + z * 0.033) * 3.5;
   }
   h += mHeight;
@@ -49,8 +73,9 @@ export function mountainMask(x, z) {
   let m = 0;
   for (const peak of MOUNTAINS) {
     const dx = x - peak.x, dz = z - peak.z;
-    const fall = Math.exp(-(dx * dx + dz * dz) / (peak.r * peak.r));
-    const shaped = fall * fall * (3 - 2 * fall);
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const p = Math.max(0, 1 - d / (peak.r * 1.55));
+    const shaped = Math.pow(p, 1.5);
     if (shaped > m) m = shaped;
   }
   return m;
@@ -520,6 +545,11 @@ export function buildWorld(scene, data, quality = {}) {
       const snow = smooth(96, 150, h + n * 26) * (1 - Math.max(0, slope - 0.55) * 1.6);
       tmp.lerp(cSnow, Math.max(0, Math.min(1, snow)));               // snowfields & caps
       if (h > 55) tmp.lerp(cRock, smooth(55, 95, h) * 0.25);
+      // geological strata bands on exposed mountain rock
+      if (mm > 0.12 && slope > 0.28) {
+        const strata = 0.90 + 0.10 * Math.sin(h * 0.52 + n * 1.6) + 0.05 * Math.sin(h * 1.7);
+        tmp.r *= strata; tmp.g *= strata; tmp.b *= strata;
+      }
     }
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
@@ -944,6 +974,43 @@ export function buildWorld(scene, data, quality = {}) {
     cliffMesh.setColorAt(i, tmpColor.setHSL(0.07, 0.03 + rng() * 0.06, 0.34 + rng() * 0.2));
   });
   scene.add(cliffMesh);
+
+  /* ---- talus fields (fallen rock at cliff bases) + jagged summit crags ---- */
+  const talusCount = Math.round(1200 * detailScale);
+  const talusSpots = scatterAccept(talusCount, (x, y, z) => {
+    if (y < 6 || y > 150) return null;
+    if (mountainMask(x, z) < 0.18) return null;
+    const sl = slopeAt(x, z);
+    if (sl < 0.3 || sl > 1.25) return null;
+    if (distToRoads(x, z) < 10) return null;
+    return { x, y, z, s: 0.7 + rng() * 2.6, r: rng() * 3 };
+  });
+  const talusMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1.5, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Math.max(1, talusSpots.length));
+  talusSpots.forEach((r, i) => {
+    dummy.position.set(r.x, r.y + r.s * 0.15, r.z);
+    dummy.scale.set(r.s * 1.35, r.s * (0.5 + rng() * 0.45), r.s);
+    dummy.rotation.set(rng() * 0.7, r.r, rng() * 0.7); dummy.updateMatrix();
+    talusMesh.setMatrixAt(i, dummy.matrix);
+    talusMesh.setColorAt(i, tmpColor.setHSL(0.07, 0.03 + rng() * 0.07, 0.3 + rng() * 0.24));
+  });
+  scene.add(talusMesh);
+
+  const cragCount = Math.round(170 * detailScale);
+  const cragSpots = scatterAccept(cragCount, (x, y, z) => {
+    if (y < 100) return null; // high country only
+    if (slopeAt(x, z) > 1.2) return null;
+    return { x, y, z, s: 0.7 + rng() * 1.3, r: rng() * 3 };
+  });
+  const cragMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(2.2, 9, 5), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Math.max(1, cragSpots.length));
+  cragMesh.castShadow = true;
+  cragSpots.forEach((r, i) => {
+    dummy.position.set(r.x, r.y + 2.4 * r.s, r.z);
+    dummy.scale.set(r.s, r.s * (1.4 + rng() * 0.9), r.s);
+    dummy.rotation.set((rng() - 0.5) * 0.24, r.r, (rng() - 0.5) * 0.24); dummy.updateMatrix();
+    cragMesh.setMatrixAt(i, dummy.matrix);
+    cragMesh.setColorAt(i, tmpColor.setHSL(0.6, 0.03 + rng() * 0.04, 0.3 + rng() * 0.2));
+  });
+  scene.add(cragMesh);
 
   /* ---- GTA-scale scenery: layered backdrops, waterfalls, summits, birds ---- */
   createMountainBackdrop(scene);
