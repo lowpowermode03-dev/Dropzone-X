@@ -56,22 +56,29 @@ app.post('/api/guest', async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+const COSMETICS_META = () => ({ skins: db.SKINS, characters: db.CHARACTERS, armors: db.ARMORS, enemyCharacters: db.ENEMY_CHARACTERS, enemyArmors: db.ENEMY_ARMORS });
+
 app.get('/api/me', authMiddleware, (req, res) => res.json({ user: db.publicUser(req.user) }));
-app.get('/api/leaderboard', (req, res) => res.json({ leaderboard: db.leaderboard(20), skins: db.SKINS }));
+app.get('/api/leaderboard', (req, res) => res.json({ leaderboard: db.leaderboard(20), ...COSMETICS_META() }));
 app.get('/api/skins', (req, res) => res.json({ skins: db.SKINS }));
 
 app.post('/api/shop/buy', authMiddleware, (req, res) => {
-  try { res.json({ user: db.buySkin(req.user.id, req.body.skinId) }); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    const kind = req.body.kind || 'skin';
+    const id = req.body.id || req.body.skinId;
+    res.json({ user: db.buyCosmetic(req.user.id, kind, id) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.post('/api/shop/equip', authMiddleware, (req, res) => {
-  const u = req.user;
-  if (!u.ownedSkins.includes(req.body.skinId)) return res.status(400).json({ error: 'Skin not owned' });
-  res.json({ user: db.updateUser(u.id, { skin: req.body.skinId }) });
+  try {
+    const kind = req.body.kind || 'skin';
+    const id = req.body.id || req.body.skinId;
+    res.json({ user: db.equipCosmetic(req.user.id, kind, id) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.get('/api/meta', (req, res) => res.json({ weapons: WEAPONS, items: ITEMS, rarities: RARITIES, rarityColors: RARITY_COLORS }));
+app.get('/api/meta', (req, res) => res.json({ weapons: WEAPONS, items: ITEMS, rarities: RARITIES, rarityColors: RARITY_COLORS, ...COSMETICS_META() }));
 // Static island data so the menu/lobby can render the 3D world backdrop
 app.get('/api/world', (req, res) => res.json({ pois: POIS, buildings: BUILDINGS, trees: TREES, rocks: ROCKS }));
 
@@ -109,7 +116,7 @@ io.on('connection', (socket) => {
   const user = socket.data.user;
   socketUser.set(socket.id, user);
   console.log(`[connect] ${user.username} (${socket.id})`);
-  socket.emit('welcome', { user, meta: { weapons: WEAPONS, items: ITEMS, rarities: RARITIES, rarityColors: RARITY_COLORS } });
+  socket.emit('welcome', { user, meta: { weapons: WEAPONS, items: ITEMS, rarities: RARITIES, rarityColors: RARITY_COLORS, ...COSMETICS_META() } });
 
   let currentRoom = null;
 

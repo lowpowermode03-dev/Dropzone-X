@@ -280,30 +280,39 @@ async function refreshLobby() {
     $('leaderboard').innerHTML = lb.leaderboard.length
       ? lb.leaderboard.map((r, i) => `<div><span>${i + 1}. ${r.username} <span class="tiny">Lv${r.level}</span></span><b>👑${r.wins} · ⚔️${r.kills}</b></div>`).join('')
       : '<div class="tiny">No matches played yet — be the first legend!</div>';
-    renderShop(lb.skins);
+    renderShop(lb);
   } catch (e) { console.warn(e); }
 }
 
-function renderShop(skins) {
-  if (!skins || !currentUser) return;
-  SKINS_BY_ID = {}; for (const sk of skins) SKINS_BY_ID[sk.id] = sk;
+const COSMETIC_FIELDS = {
+  skin: { owned: 'ownedSkins', equipped: 'skin' },
+  character: { owned: 'ownedCharacters', equipped: 'character' },
+  armor: { owned: 'ownedArmors', equipped: 'armor' },
+};
+function cosmeticCard(kind, item, swatchCss, blurb) {
+  const f = COSMETIC_FIELDS[kind];
+  const owned = (currentUser[f.owned] || []).includes(item.id);
+  const equipped = currentUser[f.equipped] === item.id;
+  return `<div class="skin-card ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}">
+    <div class="skin-swatch" style="background:${swatchCss}"></div>
+    <div><b>${item.name}</b></div><div class="tiny">${blurb || ''}</div>
+    <div class="tiny">${owned ? (equipped ? 'Equipped' : 'Owned') : '🪙 ' + item.price}</div>
+    <button data-kind="${kind}" data-id="${item.id}" ${equipped ? 'disabled' : ''}>${equipped ? 'EQUIPPED' : owned ? 'EQUIP' : 'BUY'}</button>
+  </div>`;
+}
+function renderShop(lb) {
+  if (!lb || !currentUser) return;
+  indexCosmetics(lb);
   updateMenuChar();
-  $('skinGrid').innerHTML = skins.map(sk => {
-    const owned = currentUser.ownedSkins.includes(sk.id);
-    const equipped = currentUser.skin === sk.id;
-    return `<div class="skin-card ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}">
-      <div class="skin-swatch" style="background:${sk.color}"></div>
-      <div><b>${sk.name}</b></div><div class="tiny">${owned ? (equipped ? 'Equipped' : 'Owned') : '🪙 ' + sk.price}</div>
-      <button data-skin="${sk.id}" ${equipped ? 'disabled' : ''}>${equipped ? 'EQUIPPED' : owned ? 'EQUIP' : 'BUY'}</button>
-    </div>`;
-  }).join('');
-  $('skinGrid').querySelectorAll('button[data-skin]').forEach(btn => {
+  if (lb.skins) $('skinGrid').innerHTML = lb.skins.map(sk => cosmeticCard('skin', sk, sk.color, 'Outfit color')).join('');
+  if (lb.characters) $('characterGrid').innerHTML = lb.characters.map(c => cosmeticCard('character', c, `linear-gradient(135deg, ${c.suit} 55%, ${c.accent})`, c.desc)).join('');
+  if (lb.armors) $('armorGrid').innerHTML = lb.armors.map(a => cosmeticCard('armor', a, `linear-gradient(135deg, ${a.plate} 55%, ${a.accent})`, a.desc)).join('');
+  document.querySelectorAll('#tab-locker button[data-kind]').forEach(btn => {
     btn.onclick = async () => {
-      const id = btn.dataset.skin;
+      const kind = btn.dataset.kind, id = btn.dataset.id;
+      const owned = (currentUser[COSMETIC_FIELDS[kind].owned] || []).includes(id);
       try {
-        const owned = currentUser.ownedSkins.includes(id);
-        const r = owned ? await api('/api/shop/equip', { method: 'POST', body: JSON.stringify({ skinId: id }) })
-                        : await api('/api/shop/buy', { method: 'POST', body: JSON.stringify({ skinId: id }) });
+        const r = await api(owned ? '/api/shop/equip' : '/api/shop/buy', { method: 'POST', body: JSON.stringify({ kind, id }) });
         currentUser = r.user; refreshLobby();
       } catch (e) { alert(e.message); }
     };
@@ -333,7 +342,7 @@ function addChat(user, text) {
 function connectSocket() {
   if (socket) return;
   socket = io({ auth: { token } });
-  socket.on('welcome', (d) => { META = d.meta; });
+  socket.on('welcome', (d) => { META = d.meta; indexCosmetics(d.meta); });
   socket.on('chat', (m) => addChat(m.user, m.text));
   socket.on('lobbyUpdate', (d) => { $('queuePlayers').textContent = `Players ready: ${d.players.map(p => p.username).join(', ') || '…'} — match starts soon, bots will fill the lobby`; });
   socket.on('matchStart', (data) => startMatch(data));
@@ -409,6 +418,43 @@ const G = {
   hVel: new THREE.Vector2(0, 0), coyoteUntil: 0, jumpBufferUntil: 0, eyeH: 1.62, camRoll: 0, swimming: false, crouchHeld: false,
 };
 let SKINS_BY_ID = {};
+let CHARACTERS_BY_ID = {};
+let ARMORS_BY_ID = {};
+// Fallbacks so characters render even before the catalog arrives from the server
+const FALLBACK_CHARACTERS = {
+  recruit: { id: 'recruit', name: 'Rookie Ranger', build: 'balanced', headgear: 'cap', skinTone: '#f2c79b', accent: '#ffd23f', suit: '#4d8fd1' },
+  scout: { id: 'scout', name: 'Viper Scout', build: 'slim', headgear: 'hood', skinTone: '#c98d64', accent: '#b6ff5e', suit: '#3f9e63' },
+  heavy: { id: 'heavy', name: 'Bulwark Heavy', build: 'heavy', headgear: 'helmet', skinTone: '#8a5a3b', accent: '#ffb020', suit: '#68707f' },
+  specter: { id: 'specter', name: 'Specter Operative', build: 'sleek', headgear: 'mask', skinTone: '#e8b48c', accent: '#8f6bff', suit: '#252836' },
+  raider: { id: 'raider', name: 'Wasteland Raider', build: 'balanced', headgear: 'spikes', skinTone: '#c98d64', accent: '#ffb020', suit: '#7a3b2e' },
+  marauder: { id: 'marauder', name: 'Iron Marauder', build: 'heavy', headgear: 'horns', skinTone: '#8a6a4f', accent: '#ff3d5e', suit: '#3f454f' },
+  warhound: { id: 'warhound', name: 'Warhound', build: 'slim', headgear: 'fins', skinTone: '#a87950', accent: '#ffd23f', suit: '#5d4a2f' },
+  reaper: { id: 'reaper', name: 'Void Reaper', build: 'sleek', headgear: 'reaper', skinTone: '#6f7d8c', accent: '#b18cff', suit: '#211d2e' },
+};
+const FALLBACK_ARMORS = {
+  standard: { id: 'standard', plate: '#2a2d38', accent: '#9fb4c8', trim: '#596273', tier: 0 },
+  vanguard: { id: 'vanguard', plate: '#37648f', accent: '#ffd23f', trim: '#d7e6f5', tier: 1 },
+  aegis: { id: 'aegis', plate: '#7a8794', accent: '#37e0ff', trim: '#f2f6fa', tier: 2 },
+  obsidian: { id: 'obsidian', plate: '#171923', accent: '#ff3d5e', trim: '#5c2333', tier: 3 },
+  solar: { id: 'solar', plate: '#d9b45b', accent: '#fff3b0', trim: '#fff8e1', tier: 3 },
+  raider_plate: { id: 'raider_plate', plate: '#5a3a30', accent: '#ffb020', trim: '#2e2019', tier: 2 },
+  war_plate: { id: 'war_plate', plate: '#23262d', accent: '#ff3d5e', trim: '#4a2028', tier: 3 },
+  hound_plate: { id: 'hound_plate', plate: '#4c3d28', accent: '#ffd23f', trim: '#2c2115', tier: 1 },
+  void_plate: { id: 'void_plate', plate: '#14101f', accent: '#b18cff', trim: '#2c2145', tier: 3 },
+};
+function indexCosmetics(src) {
+  if (!src) return;
+  if (src.skins) { SKINS_BY_ID = {}; for (const s of src.skins) SKINS_BY_ID[s.id] = s; }
+  if (src.characters) for (const c of src.characters) CHARACTERS_BY_ID[c.id] = c;
+  if (src.enemyCharacters) for (const c of src.enemyCharacters) CHARACTERS_BY_ID[c.id] = c;
+  if (src.armors) for (const a of src.armors) ARMORS_BY_ID[a.id] = a;
+  if (src.enemyArmors) for (const a of src.enemyArmors) ARMORS_BY_ID[a.id] = a;
+}
+function characterDef(id) { return CHARACTERS_BY_ID[id] || FALLBACK_CHARACTERS[id] || FALLBACK_CHARACTERS.recruit; }
+function armorDef(id) { return ARMORS_BY_ID[id] || FALLBACK_ARMORS[id] || FALLBACK_ARMORS.standard; }
+function myVisuals() {
+  return currentUser ? { character: currentUser.character || 'recruit', armor: currentUser.armor || 'standard' } : { character: 'recruit', armor: 'standard' };
+}
 
 // ---------------- particles (single pooled THREE.Points) ----------------
 class ParticlePool {
@@ -671,18 +717,16 @@ function stopMenuScene() {
 }
 function updateMenuChar() {
   if (!G.menuScene || !currentUser) return;
-  const color = mySkinColor();
-  if (!G.menuChar) {
-    const ch = makeCharacter(color, currentUser.username);
-    const gy = terrainHeight(14, -186);
-    ch.position.set(14, gy, -186);
-    const holder = ch.userData.gunHolder;
-    holder.add(makeGunModel('ar'));
-    G.menuScene.add(ch);
-    G.menuChar = ch;
-  } else if (G.menuChar.userData.body) {
-    G.menuChar.userData.body.material.color.set(color);
-  }
+  const key = [currentUser.skin, currentUser.character, currentUser.armor].join('|');
+  if (G.menuChar && G.menuCharKey === key) return;
+  if (G.menuChar) { G.menuScene.remove(G.menuChar); G.menuChar = null; }
+  const ch = makeCharacter(mySkinColor(), currentUser.username, myVisuals());
+  const gy = terrainHeight(14, -186);
+  ch.position.set(14, gy, -186);
+  ch.userData.gunHolder.add(makeGunModel('ar'));
+  G.menuScene.add(ch);
+  G.menuChar = ch;
+  G.menuCharKey = key;
 }
 
 // Ambient pollen / light motes drifting around the player
@@ -777,7 +821,7 @@ function startMatch(data) {
     G.camera.add(G.viewmodel); scene.add(G.camera);
     buildViewmodel('pickaxe');
     // REBORN: your own character (third-person) + pooled muzzle light
-    G.selfMesh = makeCharacter(mySkinColor(), currentUser ? currentUser.username : 'You');
+    G.selfMesh = makeCharacter(mySkinColor(), currentUser ? currentUser.username : 'You', myVisuals());
     G.selfMesh.userData.gunHolder.add(makeGunModel('pickaxe'));
     G.selfMesh.visible = false;
     scene.add(G.selfMesh);
@@ -848,33 +892,92 @@ function makeGunModel(weaponId) {
   if (weaponId === 'lmg') add(new THREE.BoxGeometry(0.16, 0.22, 0.3), dark, 0, -0.18, -0.16);
   return grp;
 }
-function makeCharacter(colorHex, username) {
+function makeCharacter(colorHex, username, opts = {}) {
+  const cDef = characterDef(opts.character);
+  const aDef = armorDef(opts.armor);
+  const enemy = !!opts.enemy;
+  const tier = aDef.tier || 0;
   const g = new THREE.Group();       // feet origin
   const anim = new THREE.Group();    // bobs/leans
   g.add(anim);
-  const suit = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex || '#4d8fd1'), roughness: 0.75 });
+  const suit = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex || cDef.suit || '#4d8fd1'), roughness: 0.75 });
   const darkM = new THREE.MeshStandardMaterial({ color: 0x2a2d38, roughness: 0.6, metalness: 0.2 });
-  const skinM = new THREE.MeshStandardMaterial({ color: 0xf2c79b, roughness: 0.65 });
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 0.62, 6, 12), suit);
-  torso.position.y = 1.32; torso.castShadow = true;
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.5, 0.24), darkM);
-  chest.position.set(0, 1.42, 0.3);
-  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.3), darkM);
-  pack.position.set(0, 1.38, -0.48); pack.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 13), skinM);
-  head.position.y = 2.08; head.castShadow = true;
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.385, 16, 9, 0, Math.PI * 2, 0, 1.3), suit);
-  cap.position.y = 2.12;
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.13, 0.1), new THREE.MeshStandardMaterial({ color: 0x101623, roughness: 0.15, metalness: 0.6 }));
-  visor.position.set(0, 2.1, 0.31);
+  const skinM = new THREE.MeshStandardMaterial({ color: new THREE.Color(cDef.skinTone || '#f2c79b'), roughness: 0.65 });
+  const plateM = new THREE.MeshStandardMaterial({ color: new THREE.Color(aDef.plate || '#2a2d38'), roughness: 0.42, metalness: 0.5 + tier * 0.09 });
+  const trimM = new THREE.MeshStandardMaterial({ color: new THREE.Color(aDef.trim || '#596273'), roughness: 0.5, metalness: 0.35 });
+  const glowM = new THREE.MeshStandardMaterial({ color: new THREE.Color(aDef.accent || '#ffd23f'), emissive: new THREE.Color(aDef.accent || '#ffd23f'), emissiveIntensity: 1.5, roughness: 0.35 });
+  const glassM = new THREE.MeshStandardMaterial({ color: 0x101623, roughness: 0.15, metalness: 0.6 });
+  const BUILDS = { balanced: { tw: 1, aw: 1, lw: 1 }, slim: { tw: 0.86, aw: 0.82, lw: 0.88 }, heavy: { tw: 1.24, aw: 1.28, lw: 1.16 }, sleek: { tw: 0.94, aw: 0.92, lw: 0.95 } };
+  const B = BUILDS[cDef.build] || BUILDS.balanced;
+  const put = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+
+  // torso + chest rig / armor plate + backpack
+  const torso = put(anim, new THREE.CapsuleGeometry(0.5, 0.62, 6, 12), suit, 0, 1.32, 0);
+  torso.scale.set(B.tw, 1, 0.92 * B.tw);
+  if (tier === 0) {
+    put(anim, new THREE.BoxGeometry(0.78, 0.5, 0.24), darkM, 0, 1.42, 0.3);
+  } else {
+    put(anim, new THREE.BoxGeometry(0.88 * B.tw, 0.58, 0.18), plateM, 0, 1.42, 0.36);
+    put(anim, new THREE.BoxGeometry(0.5 * B.tw, 0.07, 0.03), glowM, 0, 1.58, 0.46);
+    put(anim, new THREE.BoxGeometry(0.66 * B.tw, 0.14, 0.52 * B.tw), trimM, 0, 1.04, 0); // belt
+    if (tier >= 2) {
+      const core = put(anim, new THREE.CylinderGeometry(0.075, 0.075, 0.035, 16), glowM, 0, 1.36, 0.46);
+      core.rotation.x = Math.PI / 2; // glowing power core
+      put(anim, new THREE.BoxGeometry(0.7 * B.tw, 0.62, 0.14), plateM, 0, 1.42, -0.4); // back plate
+    }
+  }
+  const pack = put(anim, new THREE.BoxGeometry(0.62, 0.78, 0.3), darkM, 0, 1.38, -0.48);
+  if (tier >= 2) put(anim, new THREE.BoxGeometry(0.4, 0.08, 0.03), glowM, 0, 1.62, -0.64);
+
+  // head + character/enemy headgear
+  put(anim, new THREE.SphereGeometry(0.36, 16, 13), skinM, 0, 2.08, 0);
+  const hg = cDef.headgear || 'cap';
+  if (hg === 'cap') {
+    put(anim, new THREE.SphereGeometry(0.385, 16, 9, 0, Math.PI * 2, 0, 1.3), suit, 0, 2.12, 0);
+    put(anim, new THREE.BoxGeometry(0.5, 0.13, 0.1), glassM, 0, 2.1, 0.31);
+  } else if (hg === 'hood' || hg === 'mask' || hg === 'reaper') {
+    put(anim, new THREE.SphereGeometry(0.44, 16, 11, 0, Math.PI * 2, 0, 2.0), hg === 'hood' ? trimM : darkM, 0, 2.1, -0.03);
+    if (hg === 'hood') {
+      put(anim, new THREE.BoxGeometry(0.4, 0.3, 0.08), darkM, 0, 2.02, 0.3);
+      put(anim, new THREE.BoxGeometry(0.34, 0.05, 0.05), glowM, 0, 2.13, 0.35);
+    } else { // mask / reaper: face plate + glowing eyes
+      put(anim, new THREE.BoxGeometry(0.42, 0.36, 0.09), trimM, 0, 2.04, 0.3);
+      put(anim, new THREE.BoxGeometry(0.09, 0.045, 0.04), glowM, -0.11, 2.13, 0.35);
+      put(anim, new THREE.BoxGeometry(0.09, 0.045, 0.04), glowM, 0.11, 2.13, 0.35);
+      if (hg === 'reaper') { const spike = put(anim, new THREE.ConeGeometry(0.09, 0.34, 8), darkM, 0, 2.52, -0.08); spike.rotation.x = -0.5; }
+    }
+  } else { // helmet family: helmet / spikes / horns / fins
+    put(anim, new THREE.SphereGeometry(0.4, 16, 12, 0, Math.PI * 2, 0, 2.2), plateM, 0, 2.1, 0);
+    put(anim, new THREE.BoxGeometry(0.46, 0.07, 0.06), glowM, 0, 2.12, 0.35);
+    if (hg === 'spikes') for (const sx of [-0.18, 0, 0.18]) put(anim, new THREE.ConeGeometry(0.06, 0.24, 8), plateM, sx, 2.52, 0);
+    if (hg === 'horns') for (const sd of [-1, 1]) { const horn = put(anim, new THREE.ConeGeometry(0.07, 0.36, 8), trimM, 0.36 * sd, 2.34, 0); horn.rotation.z = -1.15 * sd; }
+    if (hg === 'fins') for (const sd of [-1, 1]) put(anim, new THREE.BoxGeometry(0.045, 0.24, 0.3), plateM, 0.32 * sd, 2.3, 0);
+  }
+  if (aDef.id === 'solar') { // Solar Champion halo
+    const halo = put(anim, new THREE.TorusGeometry(0.3, 0.028, 8, 28), glowM, 0, 2.66, 0);
+    halo.rotation.x = Math.PI / 2 - 0.35;
+  }
+
   const mkLimb = (side, isArm) => {
     const pivot = new THREE.Group();
-    pivot.position.set(0.34 * side, isArm ? 1.62 : 0.98, 0);
-    const limb = new THREE.Mesh(new THREE.BoxGeometry(isArm ? 0.21 : 0.27, isArm ? 0.82 : 0.92, isArm ? 0.24 : 0.3), isArm ? suit : darkM);
+    pivot.position.set(0.34 * side * (isArm ? B.tw : 1), isArm ? 1.62 : 0.98, 0);
+    const w = isArm ? B.aw : B.lw;
+    const limb = new THREE.Mesh(new THREE.BoxGeometry((isArm ? 0.21 : 0.27) * w, isArm ? 0.82 : 0.92, (isArm ? 0.24 : 0.3) * w), isArm ? suit : darkM);
     limb.position.y = isArm ? -0.38 : -0.44; limb.castShadow = true;
-    const end = new THREE.Mesh(new THREE.BoxGeometry(isArm ? 0.2 : 0.29, 0.14, isArm ? 0.22 : 0.42), isArm ? skinM : darkM);
+    const end = new THREE.Mesh(new THREE.BoxGeometry((isArm ? 0.2 : 0.29) * w, 0.14, (isArm ? 0.22 : 0.42) * w), isArm ? skinM : darkM);
     end.position.y = isArm ? -0.82 : -0.92; if (!isArm) end.position.z = 0.05;
     pivot.add(limb, end);
+    if (tier >= 1) { // armor that rides the limb animation: pauldrons, forearm/shin guards
+      if (isArm) {
+        const p = put(pivot, new THREE.SphereGeometry(0.2 + 0.03 * tier, 12, 9), plateM, 0, 0.04, 0);
+        p.scale.set(1.2, 0.78, 1.2);
+        if (tier >= 3) put(pivot, new THREE.ConeGeometry(0.055, 0.2, 8), trimM, 0, 0.24, 0);
+        put(pivot, new THREE.BoxGeometry(0.28 * w, 0.46, 0.31 * w), plateM, 0, -0.52, 0.02);
+      } else {
+        put(pivot, new THREE.BoxGeometry(0.31 * w, 0.5, 0.15), plateM, 0, -0.52, 0.13);
+        if (tier >= 2) put(pivot, new THREE.BoxGeometry(0.3 * w, 0.16, 0.1), trimM, 0, -0.3, 0.17);
+      }
+    }
     return pivot;
   };
   const legL = mkLimb(-0.62, false), legR = mkLimb(0.62, false);
@@ -888,7 +991,7 @@ function makeCharacter(colorHex, username) {
   glider.position.y = 3.5; glider.scale.y = 0.45; glider.visible = false; glider.castShadow = true;
   const gc = document.createElement('canvas'); gc.width = 256; gc.height = 52;
   const gtx = gc.getContext('2d'); gtx.font = '800 25px Segoe UI'; gtx.textAlign = 'center';
-  gtx.shadowColor = '#000'; gtx.shadowBlur = 6; gtx.fillStyle = '#fff'; gtx.fillText(username, 128, 33);
+  gtx.shadowColor = '#000'; gtx.shadowBlur = 6; gtx.fillStyle = enemy ? '#ff7b72' : '#fff'; gtx.fillText(username, 128, 33);
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gc), transparent: true, depthWrite: false }));
   spr.scale.set(5.2, 1.05, 1); spr.position.y = 3.0;
   // health bar sprite (canvas updated on hp change)
@@ -896,7 +999,7 @@ function makeCharacter(colorHex, username) {
   const hTex = new THREE.CanvasTexture(hc);
   const hSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: hTex, transparent: true, depthWrite: false }));
   hSpr.scale.set(2.3, 0.34, 1); hSpr.position.y = 2.68;
-  anim.add(torso, chest, pack, head, cap, visor, legL, legR, armL, armR, glider, spr, hSpr);
+  anim.add(legL, legR, armL, armR, glider, spr, hSpr);
   g.userData = { gun: gunHolder, gunHolder, glider, body: torso, anim, legL, legR, armL, armR, hCanvas: hc, hTex, hpShown: -1, phase: Math.random() * 6, lastPos: null, speed: 0 };
   return g;
 }
@@ -1089,9 +1192,10 @@ function onSnapshot(snap) {
     }
     let r = G.remotes.get(p.id);
     if (!r) {
-      const mesh = makeCharacter(p.color, p.u);
+      const mesh = makeCharacter(p.color, p.u, { character: p.char, armor: p.armor, enemy: p.bot });
+      mesh.userData.gunHolder.add(makeGunModel(p.weapon || 'pickaxe'));
       G.scene.add(mesh);
-      r = { mesh, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw, alive: true };
+      r = { mesh, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw, alive: true, weapon: p.weapon || 'pickaxe' };
       G.remotes.set(p.id, r);
     }
     // bots send movement-yaw; humans send camera-yaw (model front is +Z, camera looks -Z, hence +PI)
@@ -1100,7 +1204,12 @@ function onSnapshot(snap) {
     r.mesh.userData.glider.visible = !!p.glide;
     r.mesh.userData.gun.rotation.x = -(p.pitch || 0);
     const wid = p.weapon;
-    if (r.weapon !== wid) { r.weapon = wid; }
+    if (r.weapon !== wid) {
+      r.weapon = wid;
+      const holder = r.mesh.userData.gunHolder;
+      while (holder.children.length) holder.remove(holder.children[0]);
+      holder.add(makeGunModel(wid));
+    }
   }
   for (const [id, r] of G.remotes) {
     if (!seen.has(id)) { G.scene.remove(r.mesh); G.remotes.delete(id); }
