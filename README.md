@@ -34,6 +34,16 @@ Dropzone X can store **everything** in Supabase Postgres: accounts, stats, level
 5. Start the game: `npm install && npm start`. The console should print `☁️ Supabase connected`. Any existing local accounts in `data/users.json` are **migrated automatically** on first connect.
 6. Verify: open `http://localhost:3000/api/health` — it should return `{"ok":true,"backend":"supabase"}`. Create a guest account, play, then check **Table Editor → players** in Supabase to see the row appear. If Supabase is ever unreachable, the server logs the error and safely falls back to the local JSON database.
 
+## ▲ Deploy on Vercel
+
+The repo is Vercel-ready (`vercel.json` + `api/index.js` serverless entry; the same Express app also runs long-lived via `npm start`).
+
+1. Go to [vercel.com](https://vercel.com) → **Add New → Project** → import this GitHub repo. Framework preset: **Other**. No build command needed.
+2. In **Settings → Environment Variables**, add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a strong `JWT_SECRET` (Supabase is **required** on Vercel — serverless filesystems are ephemeral, so local JSON accounts can't persist there).
+3. **Deploy**. Your homepage, accounts, shop, leaderboard and stats all run from Vercel + Supabase.
+
+> ⚠️ Honest note on realtime: Vercel functions are short-lived and stateless, so Socket.IO match rooms (which live in server memory) can't hold 24-player matches there reliably. For full multiplayer matches, run the same code on a persistent host — Render / Railway / Fly / a VPS — with `npm start` and the same env vars. A common setup: Vercel serves the site + API, and the game server runs on Railway.
+
 ## ⛰️ The Highlands (GTA-scale terrain pass)
 
 - **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (288 m), Kings Crown (243 m), Titan Peak (218 m), Razorback Ridge (207 m), Verde Highlands (205 m) and Solstice Peaks (175 m) — now shaped like real peaks: 3 radiating arête ridges each (Everest-style), fluted valleys, steep summit pyramids, and soft-terraced **cliff bands with benches and sheer drops**, plus geological strata coloring, talus fields of fallen rock at cliff bases, jagged summit crags, scree aprons, and snowfields above ~110 m that settle on the ledges

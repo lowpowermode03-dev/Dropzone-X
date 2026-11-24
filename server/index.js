@@ -16,6 +16,11 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Hydrate the database (Supabase or local JSON) once; API calls wait for it.
+// On Vercel this runs per cold start, which is why Supabase is recommended there.
+const dbReady = db.init();
+app.use((req, res, next) => { dbReady.then(() => next(), () => next()); });
+
 function authMiddleware(req, res, next) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : null;
@@ -159,10 +164,16 @@ io.on('connection', (socket) => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true, backend: db.isSupabase() ? 'supabase' : 'json' }));
 
-db.init().then(() => {
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🎮 Dropzone X server running on http://0.0.0.0:${PORT}`);
-    console.log(`   Map: 4000x4000 | POIs: 10 | Bots fill matches to 24 fighters`);
-    console.log(`   Database: ${db.isSupabase() ? '☁️  Supabase (Postgres)' : '💾 Local JSON (data/)'}\n`);
+// Long-lived mode (npm start / Render / Railway / your PC): listen on a port.
+// Serverless mode (Vercel): the platform imports the exported Express app.
+if (require.main === module) {
+  dbReady.then(() => {
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n🎮 Dropzone X server running on http://0.0.0.0:${PORT}`);
+      console.log(`   Map: 4000x4000 | POIs: 10 | Bots fill matches to 24 fighters`);
+      console.log(`   Database: ${db.isSupabase() ? '☁️  Supabase (Postgres)' : '💾 Local JSON (data/)'}\n`);
+    });
   });
-});
+}
+
+module.exports = app;
