@@ -404,6 +404,8 @@ const G = {
   // REBORN: third-person + menu scene + slide
   thirdPerson: true, selfMesh: null, selfPhase: 0, lastSelfPos: null, camSmooth: null,
   slideUntil: 0, slideReady: 0, slideDir: null, muzzleLight: null, menuScene: null, menuCamera: null, menuChar: null, menuRAF: 0,
+  // MOVEMENT 2.0: velocity physics, jump forgiveness, swim, camera lean
+  hVel: new THREE.Vector2(0, 0), coyoteUntil: 0, jumpBufferUntil: 0, eyeH: 1.62, camRoll: 0, swimming: false, crouchHeld: false,
 };
 let SKINS_BY_ID = {};
 
@@ -762,6 +764,7 @@ function startMatch(data) {
     buildMinimapBase();
     document.body.classList.add('playing', 'busmode');
     G.ads = false; G.vmKick = 0; G.camShake = 0;
+    G.hVel.set(0, 0); G.eyeH = 1.62; G.camRoll = 0; G.velY = 0; G.swimming = false;
     $('loadingFill').style.width = '75%'; $('loadingText').textContent = 'Dropping loot & building Battle Bus…';
     // Battle bus
     G.busGroup = makeBus(); scene.add(G.busGroup);
@@ -1183,7 +1186,7 @@ function doJumpAction() {
   audio();
   if (G.mode === 'bus') { socket.emit('jump'); return; }
   if (G.mode === 'skydiving' && !G.gliding) { G.gliding = true; showNotice('🪂 Glider deployed', '#1d5c34'); return; }
-  G.keys.Space = true;
+  G.keys.Space = true; G.jumpBufferUntil = performance.now() + 150;
   setTimeout(() => { if (!T.jumpHeld) G.keys.Space = false; }, 90);
 }
 function doReload() {
@@ -1205,7 +1208,7 @@ addEventListener('keydown', (e) => {
   G.keys[e.code] = true;
   if (e.code === 'KeyP' && (G.active || currentUser)) { $('settingsScreen').classList.contains('hidden') ? openSettings() : closeSettings(); return; }
   if (!G.active) return;
-  if (e.code === 'Space') e.preventDefault();
+  if (e.code === 'Space') { e.preventDefault(); G.jumpBufferUntil = performance.now() + 150; }
   if (G.buildMode && e.code === 'KeyF') { cycleBuildType(); return; }
   if (G.mode === 'bus' && (e.code === 'KeyF' || e.code === 'Space')) { doJumpAction(); return; }
   if (G.mode === 'skydiving' && e.code === 'Space' && !G.gliding) { G.gliding = true; return; }
@@ -1216,7 +1219,11 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') { G.thirdPerson = !G.thirdPerson; showCenter(G.thirdPerson ? '🧑 Third-person camera' : '🔫 First-person camera', 900); }
   if (G.buildMode && e.code === 'KeyX') cycleBuildMat();
 });
-addEventListener('keyup', (e) => { G.keys[e.code] = false; });
+addEventListener('keyup', (e) => {
+  G.keys[e.code] = false;
+  // variable jump height: releasing Space early cuts the jump short
+  if (e.code === 'Space' && G.active && G.mode === 'ground' && !G.onGround && G.velY > 3.4) G.velY = 3.4;
+});
 document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement && G.active && G.mode !== 'bus') {
     const k = 0.0021 * SETTINGS.sens * (G.ads ? 0.5 : 1);
@@ -1379,10 +1386,18 @@ function slotWeaponId() { const s = currentSlot(); return s && s.kind === 'weapo
 
 // ---------- REBORN: third-person camera rig + own-character animation ----------
 function placeCamera(dt, eyeH, backOverride) {
+  // camera lean: roll into strafes, tilt harder while sliding
+  if (G.hVel) {
+    const rx = Math.cos(G.yaw), rz = -Math.sin(G.yaw);
+    const lat = G.hVel.x * rx + G.hVel.y * rz;
+    let rollT = THREE.MathUtils.clamp(-lat * 0.0032, -0.05, 0.05);
+    if (performance.now() < G.slideUntil) rollT += 0.05;
+    G.camRoll = (G.camRoll || 0) + (rollT - (G.camRoll || 0)) * Math.min(1, dt * 9);
+  }
   if (!G.thirdPerson) {
     G.camera.position.set(G.pos.x, G.pos.y + eyeH + (G.bobOffset || 0), G.pos.z);
     G.camera.rotation.order = 'YXZ';
-    G.camera.rotation.set(G.pitch, G.yaw, 0);
+    G.camera.rotation.set(G.pitch, G.yaw, G.camRoll || 0);
     if (G.viewmodel) G.viewmodel.visible = G.mode !== 'bus';
     if (G.selfMesh) G.selfMesh.visible = false;
     return;
@@ -1402,7 +1417,7 @@ function placeCamera(dt, eyeH, backOverride) {
   else G.camSmooth.lerp(desired, 1 - Math.exp(-22 * dt));
   G.camera.position.copy(G.camSmooth);
   G.camera.rotation.order = 'YXZ';
-  G.camera.rotation.set(G.pitch, G.yaw, 0);
+  G.camera.rotation.set(G.pitch, G.yaw, G.camRoll || 0);
 }
 function spawnSlideDust() {
   if (G.particles) G.particles.burst(G.pos.clone().setY(G.pos.y + 0.3), 0xd8c9a3, 16, 4, 0.55, -2.5);
@@ -1526,69 +1541,133 @@ function loop(now) {
     else if (G.gliding) { const f = new THREE.Vector3(-Math.sin(G.yaw), 0, -Math.cos(G.yaw)); G.pos.addScaledVector(f, hSpeed * 0.7 * dt); }
     G.pos.y += fallSpeed * dt;
     if (G.pos.y <= ground) {
-      G.pos.y = ground; G.mode = 'ground'; G.gliding = false;
+      G.pos.y = ground; G.mode = 'ground';
+      // carry dive/glide momentum into the run instead of stopping dead
+      const landSpd = G.gliding ? 8 : 3;
+      G.gliding = false;
+      G.hVel.set(-Math.sin(G.yaw) * landSpd, -Math.cos(G.yaw) * landSpd);
+      G.onGround = true; G.velY = 0;
       G.landDip = 0.22;
       if (G.particles) G.particles.burst(G.pos.clone().setY(G.pos.y + 0.3), 0xcbb98a, 18, 4.2, 0.6, -3);
       playNoise(0.12, 400, 0.1);
     }
     placeCamera(dt, 1.62, G.gliding ? 8.5 : 6.5);
   } else {
-    // ground movement
+    // ---- MOVEMENT 2.0: velocity physics (acceleration, momentum, air control) ----
     const joyMag = Math.hypot(T.joyX, T.joyY);
     const sprint = G.keys.ShiftLeft || G.keys.ShiftRight || T.sprint || joyMag > 0.92;
     const crouchInput = G.keys.ControlLeft || G.keys.KeyC || T.crouch;
-    // SLIDE: crouch while sprinting at speed
+    const wishLen = Math.min(1.5, move.length());
+    const wishDir = wishLen > 0.001 ? new THREE.Vector2(move.x / wishLen, move.z / wishLen) : new THREE.Vector2();
+    const terrainG = groundAt(G.pos.x, G.pos.z);
+    G.swimming = terrainG < WATER_Y - 0.9 && G.pos.y <= WATER_Y + 0.05;
+    // SLIDE: tap crouch at speed — dive into a momentum slide
     let sliding = now < G.slideUntil;
-    if (!sliding && crouchInput && sprint && G.onGround && moveMag > 0.4 && now > G.slideReady) {
-      sliding = true;
-      G.slideUntil = now + 680;
-      G.slideReady = now + 1050;
-      G.slideDir = move.clone().setY(0).normalize();
-      spawnSlideDust();
+    if (!sliding && crouchInput && !G.crouchHeld && G.onGround && !G.swimming && now > G.slideReady) {
+      const sp = G.hVel.length();
+      if (sp > 7.5) {
+        sliding = true;
+        G.slideUntil = now + 750;
+        G.slideReady = now + 1100;
+        const d = sp > 0.5 ? G.hVel.clone().divideScalar(sp) : wishDir;
+        G.hVel.copy(d.multiplyScalar(Math.max(11.5, sp * 1.02)));
+        G.slideDir = new THREE.Vector3(G.hVel.x, 0, G.hVel.y);
+        spawnSlideDust();
+        playNoise(0.16, 520, 0.05);
+      }
     }
+    G.crouchHeld = crouchInput;
+    if (G.ads && sliding) { sliding = false; G.slideUntil = 0; }
     const crouch = crouchInput && !sliding;
     G.isCrouching = crouch;
-    let speed = (crouch ? 3.4 : sprint ? 10.6 : 6.8) * (G.ads ? 0.55 : 1) * (moveMag || 1);
+    // desired velocity
+    let wishSpeed = crouch ? 3.4 : sprint ? 10.8 : 6.9;
+    if (G.ads) wishSpeed *= 0.55;
+    if (G.swimming) wishSpeed *= 0.55;
+    const targetVel = wishDir.clone().multiplyScalar(wishSpeed * Math.min(1, wishLen));
     if (sliding) {
-      const remain = Math.max(0, (G.slideUntil - now) / 680);
-      speed = 7.5 + 6.5 * remain;
-      if (move.lengthSq() > 0) { G.slideDir.lerp(move.clone().setY(0).normalize(), 1.6 * dt).normalize(); }
-      G.pos.addScaledVector(G.slideDir, speed * dt);
-    }
-    if (!sliding && move.lengthSq() > 0) { move.normalize(); G.pos.addScaledVector(move, speed * dt); }
-    const ground = Math.max(groundAt(G.pos.x, G.pos.z), WATER_Y - 0.4);
-    G.velY -= 24 * dt;
-    G.pos.y += G.velY * dt;
-    if (G.pos.y <= ground) {
-      if (!G.onGround) {
-        const impact = -G.velY;
-        if (impact > 7) {
-          G.landDip = Math.min(0.34, impact * 0.016);
-          if (G.particles) G.particles.burst(G.pos.clone().setY(G.pos.y + 0.25), 0xcbb98a, impact > 15 ? 20 : 10, 3.6, 0.55, -3);
-          playNoise(0.09, 320, Math.min(0.14, impact * 0.008));
-        }
+      const sp = G.hVel.length();
+      if (wishLen > 0.1 && sp > 0.5) G.hVel.lerp(wishDir.clone().multiplyScalar(sp), 1 - Math.exp(-2.2 * dt)); // steer
+      if (sp > 0.5) {
+        const dirN = G.hVel.clone().divideScalar(sp);
+        const aheadG = groundAt(G.pos.x + dirN.x * 2.4, G.pos.z + dirN.y * 2.4);
+        const slopeA = THREE.MathUtils.clamp((terrainG - aheadG) * 3.2, -7, 18); // downhill = faster
+        G.hVel.addScaledVector(dirN, slopeA * dt);
+        G.slideDir = new THREE.Vector3(G.hVel.x, 0, G.hVel.y);
       }
-      G.pos.y = ground; G.velY = 0; G.onGround = true;
-    } else if (G.pos.y > ground + 0.05) G.onGround = false;
-    if (G.onGround && G.keys.Space) { G.velY = 8.6; G.onGround = false; G.pos.y += 0.1; G.ads = false; const ab = $('btnAim'); if (ab) ab.classList.remove('on'); playNoise(0.05, 700, 0.028); }
-    horizontalCollide(prev);
-    // head-bob + footsteps (bob drives first-person cam + character anim)
-    G.bobOffset = 0;
-    if (move.lengthSq() > 0 && G.onGround) {
-      G.stepPhase += dt * (sprint ? 11.5 : 8.5);
-      G.bobOffset = Math.abs(Math.sin(G.stepPhase)) * 0.05;
-      G.stepAcc += speed * dt;
-      if (G.stepAcc > (sprint ? 3.4 : 2.6)) { G.stepAcc = 0; playStep(sprint); }
+      G.hVel.multiplyScalar(Math.exp(-0.5 * dt));
+      if (G.hVel.length() > 17.5) G.hVel.setLength(17.5);
+    } else if (G.onGround) {
+      const k = 1 - Math.exp(-13 * dt); // snappy but smooth accel/decel
+      G.hVel.x += (targetVel.x - G.hVel.x) * k;
+      G.hVel.y += (targetVel.y - G.hVel.y) * k;
+    } else {
+      const cur = G.hVel.length(), want = targetVel.length();
+      if (cur <= want + 0.001) {
+        const k = 1 - Math.exp(-1.9 * dt);
+        G.hVel.x += (targetVel.x - G.hVel.x) * k;
+        G.hVel.y += (targetVel.y - G.hVel.y) * k;
+      } else if (wishLen > 0.1) {
+        // above target speed: bend direction only, momentum is sacred
+        G.hVel.lerp(wishDir.clone().multiplyScalar(cur), 1 - Math.exp(-1.15 * dt));
+      }
     }
-    G.isSprinting = sprint && move.lengthSq() > 0;
-    placeCamera(dt, (crouch || sliding) ? 1.02 : 1.62);
+    G.pos.x += G.hVel.x * dt;
+    G.pos.z += G.hVel.y * dt;
+    const ground = Math.max(terrainG, WATER_Y - 0.4);
+    const wasGround = G.onGround;
+    if (G.swimming) {
+      G.velY = THREE.MathUtils.clamp((ground - G.pos.y) * 5, -2.6, 2.6);
+      G.pos.y += G.velY * dt;
+      G.onGround = Math.abs(G.pos.y - ground) < 0.06;
+    } else {
+      G.velY -= (G.velY < 0 ? 33 : 26) * dt; // falls faster than it rises — snappy arcs
+      if (G.velY < -38) G.velY = -38;
+      G.pos.y += G.velY * dt;
+      if (G.pos.y <= ground) {
+        if (!G.onGround) {
+          const impact = -G.velY;
+          if (impact > 7) {
+            G.landDip = Math.min(0.34, impact * 0.016);
+            if (G.particles) G.particles.burst(G.pos.clone().setY(G.pos.y + 0.25), 0xcbb98a, impact > 15 ? 20 : 10, 3.6, 0.55, -3);
+            playNoise(0.09, 320, Math.min(0.14, impact * 0.008));
+          }
+        }
+        G.pos.y = ground; G.velY = 0; G.onGround = true;
+      } else if (G.pos.y > ground + 0.05) G.onGround = false;
+    }
+    // coyote time + jump buffering (forgiving jumps)
+    if (wasGround && !G.onGround && G.velY <= 0.5) G.coyoteUntil = now + 120;
+    if (!G.swimming && (G.onGround || now < G.coyoteUntil) && (G.keys.Space || now < G.jumpBufferUntil)) {
+      G.velY = 9.4; G.onGround = false; G.pos.y += 0.12; G.coyoteUntil = 0; G.jumpBufferUntil = 0;
+      if (sliding) { G.slideUntil = 0; sliding = false; G.hVel.multiplyScalar(1.07); } // slide-jump keeps the speed
+      G.ads = false; const ab = $('btnAim'); if (ab) ab.classList.remove('on');
+      playNoise(0.05, 700, 0.028);
+    }
+    horizontalCollide(prev);
+    // walls bleed off velocity so you don't stick to them
+    if (Math.abs(G.pos.x - prev.x - G.hVel.x * dt) > 0.03) G.hVel.x *= 0.25;
+    if (Math.abs(G.pos.z - prev.z - G.hVel.y * dt) > 0.03) G.hVel.y *= 0.25;
+    // head-bob + footsteps driven by real speed
+    const hSpeedNow = G.hVel.length();
+    G.bobOffset = 0;
+    if (G.onGround && hSpeedNow > 0.6) {
+      G.stepPhase += dt * (3 + hSpeedNow * 0.85);
+      G.bobOffset = Math.abs(Math.sin(G.stepPhase)) * 0.05;
+      G.stepAcc += hSpeedNow * dt;
+      if (G.stepAcc > (G.isCrouching ? 2.0 : 2.9)) { G.stepAcc = 0; playStep(sprint); }
+    }
+    G.isSprinting = sprint && hSpeedNow > 7;
+    const eyeTarget = sliding ? 0.95 : G.swimming ? 1.02 : crouch ? 1.08 : 1.62;
+    G.eyeH += (eyeTarget - G.eyeH) * Math.min(1, dt * 11);
+    placeCamera(dt, G.eyeH);
   }
   updateSelfMesh(dt, t);
 
   // ---- camera polish: ADS FOV, sprint FOV kick, shake, landing dip, sun flare ----
   if (G.mode !== 'bus') {
     const widNow = slotWeaponId();
-    const targetFov = G.ads && G.mode === 'ground' ? (widNow === 'sniper' ? 27 : 50) : (G.isSprinting ? 83 : 78);
+    const targetFov = G.ads && G.mode === 'ground' ? (widNow === 'sniper' ? 27 : 50) : ((G.isSprinting ? 83 : 78) + Math.max(0, G.hVel.length() - 11) * 0.45);
     if (Math.abs(G.camera.fov - targetFov) > 0.05) {
       G.camera.fov += (targetFov - G.camera.fov) * Math.min(1, dt * 11);
       G.camera.updateProjectionMatrix();

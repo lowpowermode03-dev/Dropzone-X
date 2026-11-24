@@ -87,6 +87,13 @@ Full touch support, auto-detected (also switchable in Settings):
 - **Map micro-detail**: procedural multi-scale ground speckle + dry patches on the terrain shader, instanced pebbles & ground clutter, denser bushes and flowers
 - **Full soundscape (100% procedural, zero audio files)**: looping wind that rises when you skydive/glide, stereo birdsong, chill menu chord-pad music, per-weapon gunfire, reload clicks, footsteps, UI clicks — all unlocked properly on first interaction and routed through the volume setting
 
+## 🏃 MOVEMENT 2.0
+- **Velocity-based movement** replaces instant velocity: smooth acceleration/deceleration curves, true momentum, and Quake-style air control (steer in the air without losing speed)
+- **Forgiving jumps**: coyote time (120 ms), jump buffering (150 ms), variable jump height (tap = hop, hold = full jump), falls faster than it rises for snappy arcs
+- **Momentum sliding**: tap crouch at sprint speed to dive — slides steer, accelerate downhill, and a slide-jump keeps your speed; landing from a glide carries momentum into the run
+- **Swimming**: deep water slows you, floats you at the surface, and lowers the camera
+- **Feel**: speed-scaled footsteps & head-bob, smoothed crouch/slide camera height, strafe-lean camera roll, speed-based FOV stretch, walls bleed off velocity instead of sticking
+
 ## Controls
 
 | Key | Action |
