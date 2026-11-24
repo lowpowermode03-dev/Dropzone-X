@@ -69,6 +69,13 @@ Full touch support, auto-detected (also switchable in Settings):
 - Harvest wood/stone/metal and **build** walls, floors & ramps (Q / F / X)
 - Minimap with storm circle & players, compass, damage vignette, hitmarkers
 
+## 🔄 REBORN — Third-Person Revamp
+- **Third-person over-shoulder camera** (toggle `V` for first-person): you actually see your skin, third-person shooting originates from your character
+- **Living 3D lobby**: the real island (terrain, waterfalls, buildings, trees) orbits behind a 3-second character showcase wearing your equipped skin, tabbed menus (Play / Locker / Leaderboard / Stats)
+- **Movement tech**: sliding (Ctrl/C while sprinting), smoother camera smoothing + look-ahead shoulder ADS
+- **Combat feedback upgrades**: glowing tracer bolts + pooled muzzle point-lights, proper sniper scope overlay, reload progress bar, fixed remote-player facing, brighter Fortnite-style grass/palette
+- Bullet origin is now your character's body, crosshair-true in third person
+
 ## Controls
 
 | Key | Action |

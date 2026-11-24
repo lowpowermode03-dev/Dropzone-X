@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const db = require('./db');
 const { Room } = require('./game');
 const { WEAPONS, ITEMS, RARITIES, RARITY_COLORS } = require('./weapons');
-const { terrainHeight } = require('./map');
+const { terrainHeight, POIS, BUILDINGS, TREES, ROCKS } = require('./map');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fortworld-dev-secret-change-me';
 const PORT = process.env.PORT || 3000;
@@ -72,6 +72,8 @@ app.post('/api/shop/equip', authMiddleware, (req, res) => {
 });
 
 app.get('/api/meta', (req, res) => res.json({ weapons: WEAPONS, items: ITEMS, rarities: RARITIES, rarityColors: RARITY_COLORS }));
+// Static island data so the menu/lobby can render the 3D world backdrop
+app.get('/api/world', (req, res) => res.json({ pois: POIS, buildings: BUILDINGS, trees: TREES, rocks: ROCKS }));
 
 // ---------- Socket.IO ----------
 const server = http.createServer(app);

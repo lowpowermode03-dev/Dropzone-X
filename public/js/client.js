@@ -137,6 +137,7 @@ async function onAuthed(data) {
   connectSocket();
   await refreshLobby();
   show('lobbyScreen');
+  startMenuScene();
 }
 $('btnLogin').onclick = async () => {
   $('authError').textContent = '';
@@ -183,6 +184,8 @@ async function refreshLobby() {
 
 function renderShop(skins) {
   if (!skins || !currentUser) return;
+  SKINS_BY_ID = {}; for (const sk of skins) SKINS_BY_ID[sk.id] = sk;
+  updateMenuChar();
   $('skinGrid').innerHTML = skins.map(sk => {
     const owned = currentUser.ownedSkins.includes(sk.id);
     const equipped = currentUser.skin === sk.id;
@@ -297,7 +300,11 @@ const G = {
   ads: false, vmKick: 0, camShake: 0, landDip: 0, stepAcc: 0, stepPhase: 0,
   particles: null, sunSprite: null, minimapBase: null, dynRatio: 0, fpsEMA: 60, fpsTimer: 0, frameCount: 0,
   reloadUntil: 0, hpCache: 100, wasOnGround: true, burstAcc: 0,
+  // REBORN: third-person + menu scene + slide
+  thirdPerson: true, selfMesh: null, selfPhase: 0, lastSelfPos: null, camSmooth: null,
+  slideUntil: 0, slideReady: 0, slideDir: null, muzzleLight: null, menuScene: null, menuCamera: null, menuChar: null, menuRAF: 0,
 };
+let SKINS_BY_ID = {};
 
 // ---------------- particles (single pooled THREE.Points) ----------------
 class ParticlePool {
@@ -344,14 +351,23 @@ class ParticlePool {
 }
 
 function initRenderer() {
-  if (G.renderer) return;
-  G.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  if (G.renderer || G.noWebGL) return;
+  try {
+    G.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  } catch (e) {
+    G.noWebGL = true;
+    console.warn('WebGL unavailable', e);
+    return;
+  }
   G.renderer.setSize(innerWidth, innerHeight);
-  G.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const q = qualityPreset();
+  G.dynRatio = q.pixelRatio;
+  G.renderer.setPixelRatio(q.pixelRatio);
   G.renderer.shadowMap.enabled = true;
   G.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   G.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  G.renderer.toneMappingExposure = 1.05;
+  G.renderer.toneMappingExposure = 1.18;
+  G.renderer.outputColorSpace = THREE.SRGBColorSpace;
   G.renderer.domElement.className = 'game';
   G.renderer.domElement.style.cssText = 'position:fixed;inset:0;z-index:0';
   document.body.appendChild(G.renderer.domElement);
@@ -359,11 +375,80 @@ function initRenderer() {
   addEventListener('resize', () => { G.camera.aspect = innerWidth / innerHeight; G.camera.updateProjectionMatrix(); G.renderer.setSize(innerWidth, innerHeight); });
 }
 
+const FALLBACK_SKIN_COLORS = { default: '#4d8fd1', neon: '#39ff88', shadow: '#2b2b3a', gold: '#e8a33d', crimson: '#e63946', frost: '#a8dadc', toxic: '#8ac926', galaxy: '#9b5de5' };
+function mySkinColor() {
+  if (!currentUser) return '#4d8fd1';
+  return (SKINS_BY_ID[currentUser.skin] && SKINS_BY_ID[currentUser.skin].color) || FALLBACK_SKIN_COLORS[currentUser.skin] || '#4d8fd1';
+}
+
+// ---------- REBORN: live 3D island behind auth/lobby ----------
+async function startMenuScene() {
+  if (G.menuScene || G.active) return;
+  try {
+    const data = await fetch('/api/world').then(r => r.json());
+    if (!data || !data.pois || G.active) return;
+    initRenderer();
+    if (!G.renderer) return;
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x9fc6ee, 320, 4200);
+    G.menuScene = scene;
+    createSky(scene); createWater(scene);
+    scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4a7c43, 1.05));
+    const sun = new THREE.DirectionalLight(0xfff1cf, 2.2);
+    sun.position.set(400, 700, 250); scene.add(sun);
+    buildWorld(scene, data, { grass: 2200, seg: 128, aniso: 2 });
+    G.menuCamera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 9000);
+    document.body.classList.add('menu3d');
+    updateMenuChar();
+    const menuLoop = (now) => {
+      if (G.active || !G.menuScene) return;
+      G.menuRAF = requestAnimationFrame(menuLoop);
+      const t = now / 1000;
+      scene.traverse(o => { if (o.material && o.material.uniforms && o.material.uniforms.uTime) o.material.uniforms.uTime.value = t; });
+      const cx = 0, cz = -200, cy = terrainHeight(cx, cz);
+      const a = t * 0.07;
+      const target = G.menuChar ? G.menuChar.position : new THREE.Vector3(cx, cy, cz);
+      G.menuCamera.position.set(target.x + Math.cos(a) * 17, target.y + 5.2 + Math.sin(t * 0.3) * 0.8, target.z + Math.sin(a) * 17);
+      G.menuCamera.lookAt(target.x, target.y + 2.1, target.z);
+      if (G.menuChar) {
+        G.menuChar.rotation.y = -a + Math.PI / 2;
+        const u = G.menuChar.userData;
+        if (u.anim) { u.anim.position.y = Math.abs(Math.sin(t * 2.1)) * 0.05; u.armR.rotation.x = -0.4 + Math.sin(t * 1.3) * 0.12; }
+      }
+      G.renderer.render(scene, G.menuCamera);
+    };
+    G.menuRAF = requestAnimationFrame(menuLoop);
+  } catch (e) { console.warn('menu scene skipped', e); }
+}
+function stopMenuScene() {
+  if (G.menuRAF) cancelAnimationFrame(G.menuRAF);
+  G.menuRAF = 0; G.menuScene = null; G.menuChar = null;
+  document.body.classList.remove('menu3d');
+}
+function updateMenuChar() {
+  if (!G.menuScene || !currentUser) return;
+  const color = mySkinColor();
+  if (!G.menuChar) {
+    const ch = makeCharacter(color, currentUser.username);
+    const gy = terrainHeight(14, -186);
+    ch.position.set(14, gy, -186);
+    const holder = ch.userData.gunHolder;
+    holder.add(makeGunModel('ar'));
+    G.menuScene.add(ch);
+    G.menuChar = ch;
+  } else if (G.menuChar.userData.body) {
+    G.menuChar.userData.body.material.color.set(color);
+  }
+}
+
 function startMatch(data) {
+  stopMenuScene();
+  document.body.classList.remove('scoping');
   show('loadingScreen');
   $('loadingFill').style.width = '35%'; $('loadingText').textContent = 'Building island (4000 × 4000)…';
   setTimeout(() => {
     initRenderer();
+    if (!G.renderer) { showNotice('WebGL is not available on this device/browser', '#7d1d1d'); show('lobbyScreen'); return; }
     G.data = data; G.myId = data.you; G.active = true; G.ended = false; G.won = false;
     G.mode = 'bus'; G.slot = 0; G.buildMode = false;
     G.pos.set(data.bus.x, data.bus.y, data.bus.z);
@@ -396,10 +481,18 @@ function startMatch(data) {
     // Battle bus
     G.busGroup = makeBus(); scene.add(G.busGroup);
     data.loot.forEach(addLootMesh);
-    // viewmodel
+    // viewmodel (first-person mode)
     G.viewmodel = new THREE.Group();
     G.camera.add(G.viewmodel); scene.add(G.camera);
     buildViewmodel('pickaxe');
+    // REBORN: your own character (third-person) + pooled muzzle light
+    G.selfMesh = makeCharacter(mySkinColor(), currentUser ? currentUser.username : 'You');
+    G.selfMesh.userData.gunHolder.add(makeGunModel('pickaxe'));
+    G.selfMesh.visible = false;
+    scene.add(G.selfMesh);
+    G.camSmooth = null; G.lastSelfPos = G.pos.clone();
+    G.muzzleLight = new THREE.PointLight(0xffc46b, 0, 20, 1.6);
+    scene.add(G.muzzleLight);
     // ghost preview
     G.ghost = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 0.35), new THREE.MeshBasicMaterial({ color: 0x37d67a, transparent: true, opacity: 0.4, depthWrite: false }));
     G.ghost.visible = false; scene.add(G.ghost);
@@ -594,7 +687,13 @@ function renderInventory() {
   updateAmmoBox();
   const s = inv[G.slot];
   const wid = s && s.kind === 'weapon' ? s.weaponId : 'pickaxe';
-  if (wid !== G.vmWeapon) buildViewmodel(wid);
+  if (wid !== G.vmWeapon) { buildViewmodel(wid); updateSelfWeapon(wid); }
+}
+function updateSelfWeapon(wid) {
+  if (!G.selfMesh) return;
+  const holder = G.selfMesh.userData.gunHolder;
+  while (holder.children.length) holder.remove(holder.children[0]);
+  holder.add(makeGunModel(wid));
 }
 function currentSlot() { return G.self && G.self.inventory[G.slot]; }
 function updateAmmoBox() {
@@ -632,7 +731,7 @@ function endMatch(won, d) {
   if (G.ended) return;
   G.ended = true; G.active = false;
   document.exitPointerLock && document.exitPointerLock();
-  document.body.classList.remove('playing', 'busmode', 'lowhp');
+  document.body.classList.remove('playing', 'busmode', 'lowhp', 'scoping');
   $('hud').classList.add('hidden');
   show('endScreen');
   $('endTitle').textContent = won ? '#1 VICTORY ROYALE! 👑' : '#' + (d.placement || '?');
@@ -681,7 +780,8 @@ function onSnapshot(snap) {
       r = { mesh, target: new THREE.Vector3(p.x, p.y, p.z), yaw: p.yaw, alive: true };
       G.remotes.set(p.id, r);
     }
-    r.target.set(p.x, p.y, p.z); r.yawTarget = p.yaw; r.pitch = p.pitch;
+    // bots send movement-yaw; humans send camera-yaw (model front is +Z, camera looks -Z, hence +PI)
+    r.target.set(p.x, p.y, p.z); r.yawTarget = p.bot ? p.yaw : p.yaw + Math.PI; r.pitch = p.pitch;
     r.mesh.visible = !p.bus;
     r.mesh.userData.glider.visible = !!p.glide;
     r.mesh.userData.gun.rotation.x = -(p.pitch || 0);
@@ -700,10 +800,33 @@ function spawnTracer(t) {
   const to = new THREE.Vector3(t.to.x, t.to.y, t.to.z);
   const camD = from.distanceTo(G.camera.position);
   if (camD > 420) return;
-  const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
-  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: t.weaponId === 'sniper' ? 0xffe082 : 0xffc46b, transparent: true, opacity: 0.9 }));
-  G.scene.add(line);
-  G.tracers.push({ line, ttl: 0.075 });
+  // glowing bolt (stretched cylinder) instead of a 1px line
+  const dirV = to.clone().sub(from);
+  const len = Math.max(0.1, dirV.length());
+  let tr = G.tracers.find(x => x.ttl <= 0);
+  if (!tr) {
+    if (G.tracers.length > 42) { tr = G.tracers[0]; }
+    else {
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.045, 0.045, 1, 5, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      G.scene.add(mesh);
+      tr = { mesh, ttl: 0 };
+      G.tracers.push(tr);
+    }
+  }
+  tr.mesh.visible = true;
+  tr.mesh.material.color.set(t.weaponId === 'sniper' ? 0xffe082 : 0xffc46b);
+  tr.mesh.material.opacity = 0.95;
+  tr.mesh.position.copy(from).addScaledVector(dirV, 0.5);
+  tr.mesh.scale.set(t.weaponId === 'shotgun' ? 1.6 : 1, len, t.weaponId === 'shotgun' ? 1.6 : 1);
+  tr.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirV.normalize());
+  tr.ttl = 0.085;
+  if (G.muzzleLight && t.shooter !== G.myId && camD < 70) {
+    G.muzzleLight.position.copy(from);
+    G.muzzleLight.intensity = 14;
+  }
   if (G.particles && to.distanceTo(G.camera.position) < 260) G.particles.burst(to, 0xffc46b, t.shooter === G.myId ? 5 : 8, 3.4, 0.32, -4);
   if (G.particles && t.shooter !== G.myId && camD < 120) G.particles.burst(from, 0xffe082, 4, 2, 0.16, 0);
   if (t.shooter !== G.myId) {
@@ -781,7 +904,7 @@ function doJumpAction() {
 function doReload() {
   if (!socket || !G.active) return;
   const s = currentSlot();
-  if (s && s.kind === 'weapon' && META) G.reloadUntil = performance.now() + META.weapons[s.weaponId].reload;
+  if (s && s.kind === 'weapon' && META) { G.reloadUntil = performance.now() + META.weapons[s.weaponId].reload; G.reloadTotal = META.weapons[s.weaponId].reload; }
   socket.emit('reload');
 }
 function openSettings() { syncSettingsUI(); $('settingsScreen').classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); }
@@ -799,6 +922,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyR') doReload();
   if (e.code === 'KeyE') tryPickup();
   if (e.code === 'KeyQ') toggleBuild();
+  if (e.code === 'KeyV') { G.thirdPerson = !G.thirdPerson; showCenter(G.thirdPerson ? '🧑 Third-person camera' : '🔫 First-person camera', 900); }
   if (G.buildMode && e.code === 'KeyX') cycleBuildMat();
 });
 addEventListener('keyup', (e) => { G.keys[e.code] = false; });
@@ -938,6 +1062,14 @@ function initSettingsUI() {
   if ($('setFps')) $('setFps').addEventListener('change', () => { SETTINGS.fps = $('setFps').checked; applyLiveSettings(); });
   $('btnCloseSettings').addEventListener('click', closeSettings);
   $('btnSettingsLobby').addEventListener('click', openSettings);
+  // REBORN lobby tabs
+  document.querySelectorAll('.ltab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.ltab').forEach(x => x.classList.remove('active'));
+      tab.classList.add('active');
+      ['play', 'locker', 'board', 'stats'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== tab.dataset.tab));
+    });
+  });
   $('btnQuitMatch').addEventListener('click', () => location.reload());
   const tips = [
     'Tip: Legendary (orange) weapons hit up to 38% harder.',
@@ -952,6 +1084,81 @@ function initSettingsUI() {
 
 const SUN_DIR_V = new THREE.Vector3(0.5, 0.62, 0.35).normalize();
 function slotWeaponId() { const s = currentSlot(); return s && s.kind === 'weapon' ? s.weaponId : null; }
+
+// ---------- REBORN: third-person camera rig + own-character animation ----------
+function placeCamera(dt, eyeH, backOverride) {
+  if (!G.thirdPerson) {
+    G.camera.position.set(G.pos.x, G.pos.y + eyeH + (G.bobOffset || 0), G.pos.z);
+    G.camera.rotation.order = 'YXZ';
+    G.camera.rotation.set(G.pitch, G.yaw, 0);
+    if (G.viewmodel) G.viewmodel.visible = G.mode !== 'bus';
+    if (G.selfMesh) G.selfMesh.visible = false;
+    return;
+  }
+  if (G.viewmodel) G.viewmodel.visible = false;
+  const back = backOverride || (G.ads ? 2.1 : 4.4);
+  const rightOff = G.ads ? 0.55 : 0.95;
+  const cy = Math.cos(G.pitch), sy = Math.sin(G.pitch);
+  const f = new THREE.Vector3(-Math.sin(G.yaw) * cy, sy, -Math.cos(G.yaw) * cy);
+  const right = new THREE.Vector3(Math.cos(G.yaw), 0, -Math.sin(G.yaw));
+  const target = new THREE.Vector3(G.pos.x, G.pos.y + eyeH, G.pos.z);
+  const desired = target.clone().addScaledVector(f, -back).addScaledVector(right, rightOff);
+  desired.y += 0.32;
+  const gy = groundAt(desired.x, desired.z, desired.y) + 0.4;
+  if (desired.y < gy) desired.y = gy;
+  if (!G.camSmooth || G.camSmooth.distanceTo(desired) > 40) G.camSmooth = desired.clone();
+  else G.camSmooth.lerp(desired, 1 - Math.exp(-22 * dt));
+  G.camera.position.copy(G.camSmooth);
+  G.camera.rotation.order = 'YXZ';
+  G.camera.rotation.set(G.pitch, G.yaw, 0);
+}
+function spawnSlideDust() {
+  if (G.particles) G.particles.burst(G.pos.clone().setY(G.pos.y + 0.3), 0xd8c9a3, 16, 4, 0.55, -2.5);
+}
+function updateSelfMesh(dt, t) {
+  const m = G.selfMesh;
+  if (!m) return;
+  const show = G.thirdPerson && G.mode !== 'bus';
+  m.visible = show;
+  if (!show) return;
+  m.position.copy(G.pos);
+  const u = m.userData;
+  const dx = G.pos.x - (G.lastSelfPos ? G.lastSelfPos.x : G.pos.x);
+  const dz = G.pos.z - (G.lastSelfPos ? G.lastSelfPos.z : G.pos.z);
+  G.lastSelfPos = G.pos.clone();
+  const hSpeed = dt > 0 ? Math.min(16, Math.hypot(dx, dz) / dt) : 0;
+  const aiming = G.ads || G.mouseDown || G.buildMode;
+  let targetRot = m.rotation.y;
+  if (aiming) targetRot = G.yaw + Math.PI;
+  else if (hSpeed > 0.7) targetRot = Math.atan2(dx, dz);
+  let dy = targetRot - m.rotation.y;
+  while (dy > Math.PI) dy -= Math.PI * 2;
+  while (dy < -Math.PI) dy += Math.PI * 2;
+  m.rotation.y += dy * Math.min(1, dt * 14);
+  G.selfPhase += dt * (2.2 + hSpeed * 1.5);
+  const sw = Math.min(1, hSpeed / 6);
+  const sliding = performance.now() < G.slideUntil;
+  u.glider.visible = G.mode === 'skydiving' && G.gliding;
+  if (G.mode === 'skydiving') {
+    u.legL.rotation.x = 0.3; u.legR.rotation.x = -0.2;
+    u.armL.rotation.set(-2.5, 0, 0.6); u.armR.rotation.set(-2.5, 0, -0.6);
+  } else if (sliding) {
+    u.legL.rotation.x = -1.5; u.legR.rotation.x = -0.5;
+    u.armR.rotation.x = -1.2 - G.pitch * 0.6;
+    u.anim.rotation.x = 0.5;
+  } else {
+    u.anim.rotation.x = 0;
+    u.legL.rotation.x = Math.sin(G.selfPhase) * 0.8 * sw;
+    u.legR.rotation.x = -Math.sin(G.selfPhase) * 0.8 * sw;
+    const wid = slotWeaponId() || 'pickaxe';
+    u.armL.rotation.x = -Math.sin(G.selfPhase) * 0.5 * sw - (aiming && wid !== 'pickaxe' ? 0.85 + G.pitch * 0.35 : 0);
+    u.armR.rotation.x = aiming ? -1.4 - G.pitch * 0.75 : -Math.sin(G.selfPhase) * 0.5 * sw + Math.sin(G.selfPhase) * 0.1;
+    u.armL.rotation.z = 0.12; u.armR.rotation.z = -0.08;
+  }
+  const swing = performance.now() - G.swingAt;
+  if (swing < 330 && slotWeaponId() === 'pickaxe') u.armR.rotation.x = -1.2 - Math.sin((swing / 330) * Math.PI) * 1.3;
+  u.anim.position.y = G.mode === 'ground' ? Math.abs(Math.sin(G.selfPhase)) * 0.07 * sw - (G.isCrouching ? 0.22 : 0) : 0;
+}
 
 // GTA-style location banner when entering a named place
 function checkLocation(now) {
@@ -1032,16 +1239,31 @@ function loop(now) {
       if (G.particles) G.particles.burst(G.pos.clone().setY(G.pos.y + 0.3), 0xcbb98a, 18, 4.2, 0.6, -3);
       playNoise(0.12, 400, 0.1);
     }
-    G.camera.position.set(G.pos.x, G.pos.y + 1.62, G.pos.z);
-    G.camera.rotation.order = 'YXZ'; G.camera.rotation.set(G.pitch, G.yaw, 0);
-    if (G.viewmodel) G.viewmodel.visible = true;
+    placeCamera(dt, 1.62, G.gliding ? 8.5 : 6.5);
   } else {
     // ground movement
     const joyMag = Math.hypot(T.joyX, T.joyY);
     const sprint = G.keys.ShiftLeft || G.keys.ShiftRight || T.sprint || joyMag > 0.92;
-    const crouch = G.keys.ControlLeft || G.keys.KeyC || T.crouch;
-    const speed = (crouch ? 3.4 : sprint ? 10.6 : 6.8) * (G.ads ? 0.55 : 1) * (moveMag || 1);
-    if (move.lengthSq() > 0) { move.normalize(); G.pos.addScaledVector(move, speed * dt); }
+    const crouchInput = G.keys.ControlLeft || G.keys.KeyC || T.crouch;
+    // SLIDE: crouch while sprinting at speed
+    let sliding = now < G.slideUntil;
+    if (!sliding && crouchInput && sprint && G.onGround && moveMag > 0.4 && now > G.slideReady) {
+      sliding = true;
+      G.slideUntil = now + 680;
+      G.slideReady = now + 1050;
+      G.slideDir = move.clone().setY(0).normalize();
+      spawnSlideDust();
+    }
+    const crouch = crouchInput && !sliding;
+    G.isCrouching = crouch;
+    let speed = (crouch ? 3.4 : sprint ? 10.6 : 6.8) * (G.ads ? 0.55 : 1) * (moveMag || 1);
+    if (sliding) {
+      const remain = Math.max(0, (G.slideUntil - now) / 680);
+      speed = 7.5 + 6.5 * remain;
+      if (move.lengthSq() > 0) { G.slideDir.lerp(move.clone().setY(0).normalize(), 1.6 * dt).normalize(); }
+      G.pos.addScaledVector(G.slideDir, speed * dt);
+    }
+    if (!sliding && move.lengthSq() > 0) { move.normalize(); G.pos.addScaledVector(move, speed * dt); }
     const ground = Math.max(groundAt(G.pos.x, G.pos.z), WATER_Y - 0.4);
     G.velY -= 24 * dt;
     G.pos.y += G.velY * dt;
@@ -1058,18 +1280,18 @@ function loop(now) {
     } else if (G.pos.y > ground + 0.05) G.onGround = false;
     if (G.onGround && G.keys.Space) { G.velY = 8.6; G.onGround = false; G.pos.y += 0.1; G.ads = false; const ab = $('btnAim'); if (ab) ab.classList.remove('on'); }
     horizontalCollide(prev);
-    G.camera.position.set(G.pos.x, G.pos.y + (crouch ? 1.22 : 1.62), G.pos.z);
-    G.camera.rotation.order = 'YXZ'; G.camera.rotation.set(G.pitch, G.yaw, 0);
-    if (G.viewmodel) G.viewmodel.visible = true;
-    // head-bob + footsteps
+    // head-bob + footsteps (bob drives first-person cam + character anim)
+    G.bobOffset = 0;
     if (move.lengthSq() > 0 && G.onGround) {
       G.stepPhase += dt * (sprint ? 11.5 : 8.5);
-      G.camera.position.y += Math.abs(Math.sin(G.stepPhase)) * 0.05;
+      G.bobOffset = Math.abs(Math.sin(G.stepPhase)) * 0.05;
       G.stepAcc += speed * dt;
       if (G.stepAcc > (sprint ? 3.4 : 2.6)) { G.stepAcc = 0; playStep(sprint); }
     }
     G.isSprinting = sprint && move.lengthSq() > 0;
+    placeCamera(dt, (crouch || sliding) ? 1.02 : 1.62);
   }
+  updateSelfMesh(dt, t);
 
   // ---- camera polish: ADS FOV, sprint FOV kick, shake, landing dip, sun flare ----
   if (G.mode !== 'bus') {
@@ -1079,6 +1301,13 @@ function loop(now) {
       G.camera.fov += (targetFov - G.camera.fov) * Math.min(1, dt * 11);
       G.camera.updateProjectionMatrix();
     }
+    document.body.classList.toggle('scoping', !!(G.ads && widNow === 'sniper' && G.mode === 'ground'));
+    // reload progress ring under crosshair
+    const rw = $('reloadWrap');
+    if (now < G.reloadUntil && G.reloadTotal) {
+      rw.style.display = 'block';
+      $('reloadFill').style.width = Math.min(100, (1 - (G.reloadUntil - now) / G.reloadTotal) * 100) + '%';
+    } else rw.style.display = 'none';
     G.landDip *= Math.pow(0.0001, dt);
     if (G.landDip > 0.002) G.camera.position.y -= G.landDip;
     if (G.camShake > 0.002) {
@@ -1111,7 +1340,9 @@ function loop(now) {
       if (canFire && G.mode === 'ground') {
         G.lastShot = now;
         const dir = new THREE.Vector3(); G.camera.getWorldDirection(dir);
-        const origin = G.camera.position.clone();
+        const origin = G.thirdPerson
+          ? G.pos.clone().add(new THREE.Vector3(0, 1.55, 0)).addScaledVector(dir, 0.7)
+          : G.camera.position.clone();
         if (isMelee) { socket.emit('melee', { dir: { x: dir.x, y: dir.y, z: dir.z }, origin: { x: origin.x, y: origin.y, z: origin.z } }); G.swingAt = now; playNoise(0.05, 2500, 0.04); }
         else {
           if (slotItem.mag <= 0) { doReload(); }
@@ -1123,6 +1354,7 @@ function loop(now) {
             G.vmKick = slotItem.weaponId === 'sniper' ? 0.22 : 0.11;
             G.camShake = Math.min(0.3, G.camShake + (slotItem.weaponId === 'sniper' ? 0.2 : 0.06));
             G.bloom = Math.min(1, (G.bloom || 0) + 0.5);
+            if (G.muzzleLight) { G.muzzleLight.position.copy(origin).addScaledVector(dir, 1.2); G.muzzleLight.intensity = 24; }
             if (G.particles) G.particles.burst(origin.clone().addScaledVector(dir, 1.1), 0xffd76a, 3, 1.6, 0.1, 0);
           }
         }
@@ -1218,12 +1450,14 @@ function loop(now) {
     }
   }
 
-  // tracers fade
-  for (let i = G.tracers.length - 1; i >= 0; i--) {
-    const tr = G.tracers[i]; tr.ttl -= dt;
-    tr.line.material.opacity = Math.max(0, tr.ttl / 0.07) * 0.9;
-    if (tr.ttl <= 0) { G.scene.remove(tr.line); tr.line.geometry.dispose(); G.tracers.splice(i, 1); }
+  // tracer bolts fade (pooled)
+  for (const tr of G.tracers) {
+    if (tr.ttl <= 0) { if (tr.mesh) tr.mesh.visible = false; continue; }
+    tr.ttl -= dt;
+    if (tr.mesh) tr.mesh.material.opacity = Math.max(0, tr.ttl / 0.085) * 0.95;
+    if (tr.ttl <= 0 && tr.mesh) tr.mesh.visible = false;
   }
+  if (G.muzzleLight && G.muzzleLight.intensity > 0) G.muzzleLight.intensity *= Math.pow(0.000001, dt);
 
   // use bar
   if (useDur) {
@@ -1371,8 +1605,10 @@ function buildCompassTape() {
       connectSocket();
       await refreshLobby();
       show('lobbyScreen');
+      startMenuScene();
       return;
     } catch { localStorage.removeItem('fortworld_token'); token = null; }
   }
   show('authScreen');
+  startMenuScene();
 })();

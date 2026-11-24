@@ -496,9 +496,9 @@ export function buildWorld(scene, data, quality = {}) {
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const cGrass = new THREE.Color(0x5da23c), cGrass2 = new THREE.Color(0x93c24e), cSand = new THREE.Color(0xe6d29b),
-    cRock = new THREE.Color(0x8a8578), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xf4f8ff), cDirt = new THREE.Color(0x9a7b4f), cScorch = new THREE.Color(0x6f7f3a),
-    cForest = new THREE.Color(0x3e7031), cScree = new THREE.Color(0xa49a86);
+  const cGrass = new THREE.Color(0x54b531), cGrass2 = new THREE.Color(0xa9dc4e), cSand = new THREE.Color(0xf2dc9e),
+    cRock = new THREE.Color(0x8a8578), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xf4f8ff), cDirt = new THREE.Color(0xa8834f), cScorch = new THREE.Color(0x77a83b),
+    cForest = new THREE.Color(0x2f7a2e), cScree = new THREE.Color(0xa49a86);
   const tmp = new THREE.Color();
   const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
   for (let i = 0; i < pos.count; i++) {
