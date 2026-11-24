@@ -339,9 +339,24 @@ function addChat(user, text) {
 }
 
 // ---------------- socket ----------------
+// Game-server endpoint: same origin by default. If the site is hosted somewhere
+// stateless (e.g. Vercel), open it once with ?server=https://your-game-server
+// and the browser remembers it — live matches need that persistent server.
+function gameServerUrl() {
+  try {
+    const p = new URLSearchParams(location.search).get('server');
+    if (p) { localStorage.setItem('dz_server', p); return p; }
+    return localStorage.getItem('dz_server') || undefined;
+  } catch { return undefined; }
+}
 function connectSocket() {
   if (socket) return;
-  socket = io({ auth: { token } });
+  const srv = gameServerUrl();
+  socket = srv ? io(srv, { auth: { token } }) : io({ auth: { token } });
+  socket.on('connect_error', () => {
+    const el = $('queuePlayers');
+    if (el && !socket.connected) el.textContent = '⚠️ Cannot reach the game server — live matches need the persistent game server (Render/Railway running this repo). Site & accounts still work.';
+  });
   socket.on('welcome', (d) => { META = d.meta; indexCosmetics(d.meta); });
   socket.on('chat', (m) => addChat(m.user, m.text));
   socket.on('lobbyUpdate', (d) => { $('queuePlayers').textContent = `Players ready: ${d.players.map(p => p.username).join(', ') || '…'} — match starts soon, bots will fill the lobby`; });
