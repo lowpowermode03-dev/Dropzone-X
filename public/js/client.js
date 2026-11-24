@@ -266,7 +266,7 @@ async function refreshLobby() {
     const { user } = await api('/api/me');
     currentUser = user;
     $('lobbyName').textContent = user.username;
-    $('lobbyLevel').textContent = `Level ${user.level} · ${user.xp} XP`;
+    $('lobbyLevel').textContent = user.guest ? 'Guest · Noob account — no leveling (sign up to progress)' : `Level ${user.level} · ${user.xp} XP`;
     $('lobbyVbucks').textContent = user.vbucks;
     $('lobbyAvatar').textContent = user.username[0].toUpperCase();
     const s = user.stats;
