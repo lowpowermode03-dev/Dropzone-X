@@ -4,6 +4,7 @@
   "description": "Dropzone X - free browser battle royale: 4km island, Everest peaks, rivers, building, real multiplayer",
   "main": "server/index.js",
   "type": "commonjs",
+  "engines": { "node": ">=18" },
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js"

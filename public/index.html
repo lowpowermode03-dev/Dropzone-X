@@ -3,47 +3,92 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#141033">
+<meta name="theme-color" content="#050505">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Dropzone X — Free Browser Battle Royale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@200;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
 <script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
 </head>
 <body>
 
-<!-- ============ LANDING / AUTH ============ -->
-<div id="authScreen" class="screen">
-  <nav class="land-nav">
-    <div class="logo small">DROPZONE<span>X</span></div>
-    <div class="land-nav-links">
-      <a class="nav-link" href="#authCard">Play</a>
-      <a class="nav-link" href="#landFeatures">Features</a>
-      <a class="discord-btn" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">💬 Discord</a>
+<!-- ============ LANDING / AUTH (Derc-style) ============ -->
+<div id="authScreen" class="screen derc-home">
+  <div class="derc-bg"><img src="/img/hero.jpg" alt=""></div>
+  <header class="derc-top">
+    <div class="derc-logo">DROPZONE<span>_X</span><i>v1.0</i></div>
+    <nav class="derc-nav">
+      <a href="#dercMaps">MAPS</a>
+      <a href="#authCard">ACCOUNT</a>
+      <a class="derc-discord" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">DISCORD</a>
+    </nav>
+  </header>
+
+  <main class="derc-hero">
+    <div class="derc-title">DROPZONE<span>_X</span></div>
+    <div class="derc-sub">drop &middot; loot &middot; survive</div>
+    <a class="derc-start" href="#authCard">&#9654; START</a>
+    <div class="derc-tag">24 fighters &middot; one island &middot; last one standing</div>
+    <div class="derc-stats">
+      <div class="derc-stat"><span>Island</span><b>4 KM&sup2;</b></div>
+      <div class="derc-stat"><span>Tallest peak</span><b>288 M</b></div>
+      <div class="derc-stat"><span>Towns</span><b>10</b></div>
+      <div class="derc-stat"><span>Per match</span><b>24</b></div>
     </div>
-  </nav>
-  <div class="land-hero">
-    <div class="hero-copy">
-      <div class="hero-badge">🪂 SEASON 1 · 24-PLAYER BATTLE ROYALE · 100% FREE</div>
-      <h1 class="hero-title">DROPZONE <span>X</span></h1>
-      <p class="hero-sub">Drop from the Battle Bus onto a 4 km² island of Everest-sized peaks, winding rivers and neon-lit towns. Loot up, build cover, surf the storm — and be the last one standing.</p>
-      <div class="hero-ctas">
-        <a class="btn play" href="#authCard">▶ PLAY FREE NOW</a>
-        <a class="btn discord-big" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">💬 Join our Discord</a>
+  </main>
+
+  <section class="derc-lower">
+    <aside class="derc-side">
+      <div class="derc-side-title">Menu</div>
+      <a class="derc-slant active" href="#authCard">&#9654; Play</a>
+      <a class="derc-slant" href="#dercMaps">Map Select</a>
+      <a class="derc-slant" href="#authCard">Characters</a>
+      <a class="derc-slant" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">Discord</a>
+      <div class="derc-mini">
+        <h3>Top Drops</h3>
+        <div><span>Mount Apex</span><b>288 M</b></div>
+        <div><span>Dropzone City</span><b>URBAN</b></div>
+        <div><span>Titan Peak</span><b>218 M</b></div>
+        <div><span>Apex River</span><b>RIVER</b></div>
       </div>
-      <div class="hero-stats">
-        <div><b>4 km²</b><span>Island</span></div>
-        <div><b>288 m</b><span>Tallest peak</span></div>
-        <div><b>10</b><span>Towns &amp; POIs</span></div>
-        <div><b>24</b><span>Fighters / match</span></div>
-      </div>
-      <div class="features" id="landFeatures">
-        <div>⛰️ Everest-style peaks</div><div>🏞️ Flowing rivers</div><div>🌩️ Shrinking storm</div><div>🔨 Build &amp; harvest</div>
-        <div>🔫 6 weapons · 5 rarities</div><div>🤖 Bots fill every match</div><div>👥 Real multiplayer</div><div>📱 Mobile controls</div><div>🎬 Bloom &amp; god rays</div><div>🌾 Living grass meadows</div>
+    </aside>
+
+    <div class="derc-cards" id="dercMaps">
+      <a class="derc-card" href="#authCard">
+        <img src="/img/hero.jpg" alt=""><div class="derc-card-shade"></div>
+        <div class="derc-card-title">DROPZONE CITY</div>
+        <div class="derc-card-sub">Urban loot hotspot &middot; rooftops &amp; alleys</div>
+        <div class="derc-badge">121 BUILDINGS</div>
+      </a>
+      <a class="derc-card" href="#authCard">
+        <img src="/img/hero.jpg" alt=""><div class="derc-card-shade"></div>
+        <div class="derc-card-title">MOUNT APEX</div>
+        <div class="derc-card-sub">Everest-style ar&ecirc;tes &middot; sniper heaven</div>
+        <div class="derc-badge">288 M &middot; PEAK</div>
+      </a>
+      <a class="derc-card" href="#authCard">
+        <img src="/img/hero.jpg" alt=""><div class="derc-card-shade"></div>
+        <div class="derc-card-title">APEX RIVER</div>
+        <div class="derc-card-sub">Swim the rapids &middot; fastest rotation on the island</div>
+        <div class="derc-badge">3.1 KM &middot; RIVER</div>
+      </a>
+      <a class="derc-card" href="#authCard">
+        <img src="/img/hero.jpg" alt=""><div class="derc-card-shade"></div>
+        <div class="derc-card-title">TITAN RIVER &amp; FALLS</div>
+        <div class="derc-card-sub">Waterfalls &middot; highlands &middot; storm edge fights</div>
+        <div class="derc-badge">218 M &middot; TITAN</div>
+      </a>
+      <div class="derc-features">
+        <span>&#9968; Everest peaks</span><span>&#127754; Flowing rivers</span><span>&#9928; Shrinking storm</span><span>&#128296; Build &amp; harvest</span><span>&#128299; 7 weapons &middot; 5 rarities</span><span>&#129302; Enemy squads</span><span>&#128101; Real multiplayer</span><span>&#128241; Mobile controls</span>
       </div>
     </div>
-    <div class="auth-card" id="authCard">
+
+    <div class="auth-card derc-auth" id="authCard">
+      <div class="derc-auth-title">ACCOUNT</div>
       <div class="auth-tabs">
         <button id="tabLogin" class="tab active">Log In</button>
         <button id="tabRegister" class="tab">Sign Up</button>
@@ -61,13 +106,14 @@
       </div>
       <div id="authError" class="error"></div>
       <div class="divider"><span>or</span></div>
-      <button id="btnGuest" class="btn ghost big">▶ PLAY AS GUEST (instant)</button>
-      <p class="tiny">Accounts save your stats, level, V-Bucks &amp; skins across matches. Works on mobile too — touch controls included.</p>
+      <button id="btnGuest" class="btn ghost big">&#9654; PLAY AS GUEST (instant)</button>
+      <p class="tiny">Accounts save stats, level, V-Bucks, skins, characters &amp; armor. Mobile touch controls included.</p>
     </div>
-  </div>
-  <footer class="land-foot">
-    <span>DROPZONE X — a free fan-made browser game. Not affiliated with Epic Games.</span>
-    <a href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">💬 discord.gg/rHvJcQAeAN</a>
+  </section>
+
+  <footer class="derc-foot">
+    <span>DROPZONE_X &mdash; a free fan-made browser game. Not affiliated with Epic Games.</span>
+    <a href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">discord.gg/rHvJcQAeAN</a>
   </footer>
 </div>
 
