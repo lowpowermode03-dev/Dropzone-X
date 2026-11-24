@@ -31,10 +31,11 @@ function makeInventory() {
   ];
 }
 
-function makePlayer({ id, userId, username, isBot, skin }) {
+function makePlayer({ id, userId, username, isBot, skin, character, armor, enemy, color }) {
   return {
     id, userId: userId || null, username, isBot: !!isBot,
-    skin: skin || 'default', color: skinColor(skin || 'default'),
+    skin: skin || 'default', color: color || skinColor(skin || 'default'),
+    character: character || 'recruit', armor: armor || 'standard', enemy: enemy || null,
     x: 0, y: 300, z: 0, yaw: 0, pitch: 0,
     health: 100, shield: 0, alive: true, placement: 0,
     inBus: true, skydiving: false, gliding: false, onGround: false,
@@ -82,7 +83,7 @@ class Room {
   }
 
   addHuman(socket, user) {
-    const p = makePlayer({ id: socket.id, userId: user.id, username: user.username, skin: user.skin });
+    const p = makePlayer({ id: socket.id, userId: user.id, username: user.username, skin: user.skin, character: user.character, armor: user.armor });
     this.players.set(p.id, p);
     this.sockets.set(p.id, socket);
     socket.join(this.id);
@@ -125,8 +126,8 @@ class Room {
     const botCount = Math.max(0, want - this.players.size);
     for (let i = 0; i < botCount; i++) {
       const name = BOT_NAMES[i % BOT_NAMES.length] + (i >= BOT_NAMES.length ? '_' + i : '');
-      const skin = db.SKINS[Math.floor(Math.random() * db.SKINS.length)].id;
-      const bot = makePlayer({ id: 'bot_' + this.id + '_' + i, username: name, isBot: true, skin });
+      const foe = db.ENEMY_ROSTER[Math.floor(Math.random() * db.ENEMY_ROSTER.length)];
+      const bot = makePlayer({ id: 'bot_' + this.id + '_' + i, username: name, isBot: true, skin: 'enemy', character: foe.character, armor: foe.armor, enemy: foe.name, color: foe.color });
       bot.jumpAt = 0.15 + Math.random() * 0.7; // fraction of bus path
       this.players.set(bot.id, bot);
     }
@@ -577,7 +578,7 @@ class Room {
       aliveCount: this.alive().length,
       players: [...this.players.values()].filter(p => p.alive || p.inBus).map(p => ({
         id: p.id, u: p.username, x: +p.x.toFixed(1), y: +p.y.toFixed(1), z: +p.z.toFixed(1), yaw: +p.yaw.toFixed(2), pitch: +(p.pitch || 0).toFixed(2),
-        hp: Math.ceil(p.health), sh: Math.ceil(p.shield), bot: p.isBot, color: p.color, sky: p.skydiving, glide: p.gliding, bus: p.inBus, slot: p.slot,
+        hp: Math.ceil(p.health), sh: Math.ceil(p.shield), bot: p.isBot, color: p.color, char: p.character, armor: p.armor, enemy: p.enemy, sky: p.skydiving, glide: p.gliding, bus: p.inBus, slot: p.slot,
         weapon: p.inventory[p.slot] && p.inventory[p.slot].kind === 'weapon' ? p.inventory[p.slot].weaponId : 'pickaxe',
       })),
     };

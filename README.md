@@ -77,6 +77,12 @@ Full touch support, auto-detected (also switchable in Settings):
 - **More clutter**: 2,400+ pebbles, fallen twigs & branches, plus everything from the detail pass
 - **Real GLB models**: the pickaxe is now a true binary glTF model (`public/models/pickaxe.glb` — curved steel blade, tapered wooden handle, leather grip wraps, PBR materials) loaded by a built-in dependency-free GLB loader (`public/js/gltf.js`), with the old procedural mesh kept only as an offline fallback
 
+## 🧍 Characters, Armor Cosmetics & Enemy Characters
+- **4 playable characters** in the Locker: Rookie Ranger (balanced, cap), Viper Scout (slim, hooded), Bulwark Heavy (bulky, full helmet) and Specter Operative (sleek, glowing mask) — each with its own body build, headgear and skin tone, previewed live in the 3D lobby showcase
+- **5 armor cosmetics** layered over your character: pauldrons, plated chests, belts, forearm/shin guards, back plates, glowing power cores — up to the golden **Solar Champion** with a radiant halo and the blackened **Obsidian Warplate** with spiked pauldrons. Pure style, stats stay fair
+- **Full cosmetic economy**: characters and armor are bought/equipped with V-Bucks in the Locker (persisted per account alongside skins; older accounts are auto-migrated)
+- **Enemy characters**: bots no longer wear random player skins — they spawn as 4 hostile archetypes (**Wasteland Raider, Iron Marauder, Warhound, Void Reaper**) with scrap/war/void armor, glowing visors, horns/spikes/fins and red nameplates, broadcast in snapshots so every client renders them identically
+
 ## 🔄 REBORN — Third-Person Revamp
 - **Third-person over-shoulder camera** (toggle `V` for first-person): you actually see your skin, third-person shooting originates from your character
 - **Living 3D lobby**: the real island (terrain, waterfalls, buildings, trees) orbits behind a 3-second character showcase wearing your equipped skin, tabbed menus (Play / Locker / Leaderboard / Stats)
