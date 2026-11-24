@@ -76,6 +76,12 @@ Full touch support, auto-detected (also switchable in Settings):
 - **Combat feedback upgrades**: glowing tracer bolts + pooled muzzle point-lights, proper sniper scope overlay, reload progress bar, fixed remote-player facing, brighter Fortnite-style grass/palette
 - Bullet origin is now your character's body, crosshair-true in third person
 
+## ✨ FULLY GREAT — Visuals Pass
+- **Hand-rolled post-processing pipeline** (pure three.js core, no addons): HDR scene target with 4×MSAA → soft-threshold bright pass → two-scale gaussian **bloom** → **screen-space god rays** ray-marched from the real sky sun (terrain occlusion comes free from the bright buffer) → ACES filmic tonemap, saturation/contrast grade, vignette, chromatic aberration whisper, film grain
+- **Real grass**: instanced blade tufts (3 tapered blades, up-facing Fortnite-style normals, dark-base→bright-tip gradient), **travelling wind gusts** + per-tuft flutter in the vertex shader, camera-distance fade, up to ~46k tufts on Cinematic; pine canopies sway too
+- **Atmosphere**: sun glitter on water feeds the bloom, floating pollen/light motes drift around the player, sun lens sprite
+- Quality-aware: Cinematic = full rays + strong bloom, Balanced = cheaper rays, Performance = direct render; toggle in **Settings → Post FX (bloom + god rays)**
+
 ## Controls
 
 | Key | Action |

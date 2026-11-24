@@ -17,12 +17,12 @@ let META = null;
 
 // ---------------- settings & quality ----------------
 const QUALITY_PRESETS = {
-  cinematic: { pixelRatio: Math.min(devicePixelRatio || 1, 2), shadow: 2048, grass: 26000, seg: 320, aniso: 8 },
-  balanced: { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadow: 1024, grass: 12000, seg: 224, aniso: 4 },
-  performance: { pixelRatio: 1, shadow: 512, grass: 4000, seg: 160, aniso: 2 },
+  cinematic: { pixelRatio: Math.min(devicePixelRatio || 1, 2), shadow: 2048, grass: 46000, seg: 320, aniso: 8 },
+  balanced: { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadow: 1024, grass: 22000, seg: 224, aniso: 4 },
+  performance: { pixelRatio: 1, shadow: 512, grass: 7000, seg: 160, aniso: 2 },
 };
 const HAS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-let SETTINGS = { quality: 'auto', touch: 'auto', sens: 1, vol: 80, invert: false, fps: false };
+let SETTINGS = { quality: 'auto', touch: 'auto', sens: 1, vol: 80, invert: false, fps: false, post: 'auto' };
 try { Object.assign(SETTINGS, JSON.parse(localStorage.getItem('fw_settings') || '{}')); } catch {}
 function saveSettings() { localStorage.setItem('fw_settings', JSON.stringify(SETTINGS)); }
 function resolvedQualityName() {
@@ -38,6 +38,7 @@ applyTouchClass();
 function syncSettingsUI() {
   for (const id of ['qualitySelect', 'setQuality']) { const el = $(id); if (el) el.value = SETTINGS.quality; }
   for (const id of ['touchSelect', 'setTouch']) { const el = $(id); if (el) el.value = SETTINGS.touch; }
+  if ($('setPost')) $('setPost').value = SETTINGS.post;
   if ($('setSens')) { $('setSens').value = SETTINGS.sens; $('sensVal').textContent = Number(SETTINGS.sens).toFixed(1) + '×'; }
   if ($('setVol')) { $('setVol').value = SETTINGS.vol; $('volVal').textContent = SETTINGS.vol + '%'; }
   if ($('setInvert')) $('setInvert').checked = !!SETTINGS.invert;
@@ -372,10 +373,149 @@ function initRenderer() {
   G.renderer.domElement.style.cssText = 'position:fixed;inset:0;z-index:0';
   document.body.appendChild(G.renderer.domElement);
   G.camera = new THREE.PerspectiveCamera(78, innerWidth / innerHeight, 0.1, 9000);
-  addEventListener('resize', () => { G.camera.aspect = innerWidth / innerHeight; G.camera.updateProjectionMatrix(); G.renderer.setSize(innerWidth, innerHeight); });
+  addEventListener('resize', () => {
+    G.camera.aspect = innerWidth / innerHeight; G.camera.updateProjectionMatrix();
+    if (G.menuCamera) { G.menuCamera.aspect = innerWidth / innerHeight; G.menuCamera.updateProjectionMatrix(); }
+    G.renderer.setSize(innerWidth, innerHeight);
+  });
 }
 
 const FALLBACK_SKIN_COLORS = { default: '#4d8fd1', neon: '#39ff88', shadow: '#2b2b3a', gold: '#e8a33d', crimson: '#e63946', frost: '#a8dadc', toxic: '#8ac926', galaxy: '#9b5de5' };
+
+// ---------------- post-processing: bloom + god rays + filmic grade ----------------
+// Hand-rolled composer (no addons): HDR scene target -> bright pass -> 2-scale
+// gaussian bloom -> screen-space god rays from the real sky sun -> ACES + grade.
+const SUN_DIR = new THREE.Vector3(0.5, 0.62, 0.35).normalize(); // matches world.js sky/water
+let POST = null, POST_DEAD = false;
+function postModeName() {
+  if (SETTINGS.post === 'off') return null;
+  if (SETTINGS.post === 'on') return 'cinematic';
+  const q = resolvedQualityName();
+  return q === 'performance' ? null : q; // cinematic | balanced
+}
+const POST_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+function initPost() {
+  try {
+    if (!G.renderer.capabilities.isWebGL2) { POST_DEAD = true; return; }
+    const pm = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: POST_VERT, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false });
+    const rt = (withDepth) => new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: !!withDepth });
+    const sceneRT = rt(true); sceneRT.samples = 4;
+    POST = {
+      scene: new THREE.Scene(),
+      cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
+      rtScene: sceneRT, rtA: rt(), rtB: rt(), rtC: rt(), rtD: rt(), rtGod: rt(),
+      copy: pm('varying vec2 vUv; uniform sampler2D tD; void main(){ gl_FragColor = vec4(texture2D(tD, vUv).rgb, 1.0); }', { tD: { value: null } }),
+      bright: pm(`varying vec2 vUv; uniform sampler2D tD;
+        void main(){ vec3 c = texture2D(tD, vUv).rgb;
+          float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+          gl_FragColor = vec4(c * smoothstep(0.72, 1.2, l), 1.0); }`, { tD: { value: null } }),
+      blur: pm(`varying vec2 vUv; uniform sampler2D tD; uniform vec2 uDir;
+        void main(){
+          vec3 c = texture2D(tD, vUv).rgb * 0.227027027;
+          vec2 o1 = uDir * 1.3846153846, o2 = uDir * 3.2307692307;
+          c += (texture2D(tD, vUv + o1).rgb + texture2D(tD, vUv - o1).rgb) * 0.3162162162;
+          c += (texture2D(tD, vUv + o2).rgb + texture2D(tD, vUv - o2).rgb) * 0.0702702703;
+          gl_FragColor = vec4(c, 1.0); }`, { tD: { value: null }, uDir: { value: new THREE.Vector2(0.001, 0) } }),
+      god: pm(`varying vec2 vUv; uniform sampler2D tD; uniform vec2 uSunUv; uniform float uI; uniform float uSteps;
+        void main(){
+          vec2 delta = (uSunUv - vUv) / max(uSteps, 1.0);
+          vec2 uv = vUv; vec3 acc = vec3(0.0); float w = 1.0;
+          for (int i = 0; i < 48; i++) {
+            if (float(i) >= uSteps) break;
+            uv += delta;
+            acc += texture2D(tD, uv).rgb * w;
+            w *= 0.94;
+          }
+          acc /= max(uSteps * 0.55, 1.0);
+          gl_FragColor = vec4(acc * uI, 1.0); }`, { tD: { value: null }, uSunUv: { value: new THREE.Vector2(0.5, 0.75) }, uI: { value: 0 }, uSteps: { value: 40 } }),
+      comp: pm(`varying vec2 vUv;
+        uniform sampler2D tScene, tBloomT, tBloomW, tGod;
+        uniform float uTime, uBloom, uGodK;
+        vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+        void main(){
+          vec2 d = vUv - 0.5;
+          float r2 = dot(d, d);
+          vec2 ca = d * r2 * 0.012; // whisper of chromatic aberration
+          vec3 col;
+          col.r = texture2D(tScene, vUv + ca).r;
+          col.g = texture2D(tScene, vUv).g;
+          col.b = texture2D(tScene, vUv - ca).b;
+          col += texture2D(tBloomT, vUv).rgb * (uBloom * 0.62);
+          col += texture2D(tBloomW, vUv).rgb * (uBloom * 0.55);
+          col += texture2D(tGod, vUv).rgb * uGodK * vec3(1.0, 0.82, 0.58);
+          col = aces(col * 1.06);
+          float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+          col = mix(vec3(l), col, 1.13); // saturation pop
+          col = (col - 0.5) * 1.03 + 0.5;
+          float vig = smoothstep(0.95, 0.35, length(d * vec2(1.12, 1.0)) * 1.35);
+          col *= mix(0.74, 1.0, vig);
+          col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));
+          float gr = fract(sin(dot(vUv * (fract(uTime) + 13.7), vec2(12.9898, 78.233))) * 43758.5453);
+          col += (gr - 0.5) * 0.016; // film grain
+          gl_FragColor = vec4(col, 1.0);
+        }`, { tScene: { value: null }, tBloomT: { value: null }, tBloomW: { value: null }, tGod: { value: null }, uTime: { value: 0 }, uBloom: { value: 0.9 }, uGodK: { value: 0.9 } }),
+    };
+    POST.mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), POST.copy);
+    POST.mesh.frustumCulled = false;
+    POST.scene.add(POST.mesh);
+  } catch (e) {
+    console.warn('post fx unavailable', e);
+    POST_DEAD = true; POST = null;
+  }
+}
+const _postSize = new THREE.Vector2(), _sunProj = new THREE.Vector3(), _camFwd = new THREE.Vector3();
+function postResize(w, h) {
+  const set = (target, x, y) => { x = Math.max(2, x); y = Math.max(2, y); if (target.width !== x || target.height !== y) target.setSize(x, y); };
+  set(POST.rtScene, w, h);
+  set(POST.rtA, w >> 1, h >> 1); set(POST.rtB, w >> 1, h >> 1);
+  set(POST.rtC, w >> 2, h >> 2); set(POST.rtD, w >> 2, h >> 2); set(POST.rtGod, w >> 2, h >> 2);
+}
+function renderFrame(scene, camera) {
+  if (!G.renderer) return;
+  const mode = postModeName();
+  if (POST_DEAD || !mode) { G.renderer.render(scene, camera); return; }
+  if (!POST) { initPost(); if (!POST) { G.renderer.render(scene, camera); return; } }
+  const R = G.renderer;
+  R.getDrawingBufferSize(_postSize);
+  const W = _postSize.x, H = _postSize.y;
+  postResize(W, H);
+  const run = (mat, target, src) => {
+    POST.mesh.material = mat;
+    if (src && mat.uniforms.tD) mat.uniforms.tD.value = src;
+    R.setRenderTarget(target);
+    R.render(POST.scene, POST.cam);
+  };
+  R.setRenderTarget(POST.rtScene); R.render(scene, camera);
+  run(POST.bright, POST.rtA, POST.rtScene.texture);
+  POST.blur.uniforms.uDir.value.set(1 / (W >> 1), 0); run(POST.blur, POST.rtB, POST.rtA.texture);
+  POST.blur.uniforms.uDir.value.set(0, 1 / (H >> 1)); run(POST.blur, POST.rtA, POST.rtB.texture);
+  run(POST.copy, POST.rtC, POST.rtA.texture);
+  POST.blur.uniforms.uDir.value.set(1 / (W >> 2), 0); run(POST.blur, POST.rtD, POST.rtC.texture);
+  POST.blur.uniforms.uDir.value.set(0, 1 / (H >> 2)); run(POST.blur, POST.rtC, POST.rtD.texture);
+  // god rays: project the sun, fade when off-screen / behind / facing away.
+  // (rays sample the bright buffer, so terrain occlusion is automatic)
+  camera.getWorldDirection(_camFwd);
+  const facing = _camFwd.dot(SUN_DIR);
+  _sunProj.copy(camera.position).addScaledVector(SUN_DIR, 3000).project(camera);
+  const sx = _sunProj.x * 0.5 + 0.5, sy = _sunProj.y * 0.5 + 0.5;
+  const edge = Math.max(Math.abs(sx - 0.5), Math.abs(sy - 0.5)) * 2;
+  const vis = THREE.MathUtils.clamp((facing - 0.02) / 0.4, 0, 1)
+    * THREE.MathUtils.clamp(1.18 - edge * 0.55, 0, 1) * (_sunProj.z < 1 ? 1 : 0);
+  POST.god.uniforms.uSunUv.value.set(sx, sy);
+  POST.god.uniforms.uI.value = (mode === 'cinematic' ? 0.9 : 0.65) * vis;
+  POST.god.uniforms.uSteps.value = mode === 'cinematic' ? 44 : 30;
+  run(POST.god, POST.rtGod, POST.rtA.texture);
+  const comp = POST.comp;
+  comp.uniforms.tScene.value = POST.rtScene.texture;
+  comp.uniforms.tBloomT.value = POST.rtA.texture;
+  comp.uniforms.tBloomW.value = POST.rtC.texture;
+  comp.uniforms.tGod.value = POST.rtGod.texture;
+  comp.uniforms.uTime.value = (performance.now() / 1000) % 61;
+  comp.uniforms.uBloom.value = mode === 'cinematic' ? 0.95 : 0.75;
+  POST.mesh.material = comp;
+  R.setRenderTarget(null);
+  R.render(POST.scene, POST.cam);
+}
 function mySkinColor() {
   if (!currentUser) return '#4d8fd1';
   return (SKINS_BY_ID[currentUser.skin] && SKINS_BY_ID[currentUser.skin].color) || FALLBACK_SKIN_COLORS[currentUser.skin] || '#4d8fd1';
@@ -396,7 +536,7 @@ async function startMenuScene() {
     scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4a7c43, 1.05));
     const sun = new THREE.DirectionalLight(0xfff1cf, 2.2);
     sun.position.set(400, 700, 250); scene.add(sun);
-    buildWorld(scene, data, { grass: 2200, seg: 128, aniso: 2 });
+    G.menuWorldRef = buildWorld(scene, data, { grass: 9000, seg: 128, aniso: 2 });
     G.menuCamera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 9000);
     document.body.classList.add('menu3d');
     updateMenuChar();
@@ -415,7 +555,8 @@ async function startMenuScene() {
         const u = G.menuChar.userData;
         if (u.anim) { u.anim.position.y = Math.abs(Math.sin(t * 2.1)) * 0.05; u.armR.rotation.x = -0.4 + Math.sin(t * 1.3) * 0.12; }
       }
-      G.renderer.render(scene, G.menuCamera);
+      if (G.menuWorldRef) G.menuWorldRef.updateWorld(t, 0.016, G.menuCamera.position);
+      renderFrame(scene, G.menuCamera);
     };
     G.menuRAF = requestAnimationFrame(menuLoop);
   } catch (e) { console.warn('menu scene skipped', e); }
@@ -439,6 +580,49 @@ function updateMenuChar() {
   } else if (G.menuChar.userData.body) {
     G.menuChar.userData.body.material.color.set(color);
   }
+}
+
+// Ambient pollen / light motes drifting around the player
+function ensurePollen(scene) {
+  if (G.pollen) { scene.add(G.pollen); return; }
+  const N = HAS_TOUCH ? 90 : 170;
+  const arr = new Float32Array(N * 3);
+  const base = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    base[i * 3] = (Math.random() - 0.5) * 64;
+    base[i * 3 + 1] = Math.random() * 16;
+    base[i * 3 + 2] = (Math.random() - 0.5) * 64;
+  }
+  arr.set(base);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    map: getGlowTexture(), color: 0xffeeb8, size: 0.22, sizeAttenuation: true,
+    transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  pts.frustumCulled = false;
+  G.pollen = pts; G.pollenBase = base;
+  scene.add(pts);
+}
+function updatePollen(t) {
+  if (!G.pollen) return;
+  const show = G.mode === 'ground';
+  G.pollen.visible = show;
+  if (!show) return;
+  const posA = G.pollen.geometry.attributes.position;
+  const base = G.pollenBase, cam = G.camera.position;
+  for (let i = 0; i < base.length; i += 3) {
+    let x = base[i] + Math.sin(t * 0.35 + i) * 2.2;
+    let y = base[i + 1] + Math.sin(t * 0.5 + i * 1.7) * 1.1;
+    let z = base[i + 2] + Math.cos(t * 0.28 + i * 0.6) * 2.2;
+    // wrap around camera in a 64m box
+    x = cam.x + ((((x - cam.x) % 64) + 96) % 64) - 32;
+    z = cam.z + ((((z - cam.z) % 64) + 96) % 64) - 32;
+    posA.array[i] = x;
+    posA.array[i + 1] = cam.y - 2 + ((y % 18) + 18) % 18;
+    posA.array[i + 2] = z;
+  }
+  posA.needsUpdate = true;
 }
 
 function startMatch(data) {
@@ -474,6 +658,7 @@ function startMatch(data) {
     G.sunSprite = flare; scene.add(flare);
     G.world = buildWorld(scene, data, q);
     G.particles = new ParticlePool(scene, HAS_TOUCH ? 800 : 1600);
+    ensurePollen(scene);
     buildMinimapBase();
     document.body.classList.add('playing', 'busmode');
     G.ads = false; G.vmKick = 0; G.camShake = 0;
@@ -1056,6 +1241,7 @@ function initSettingsUI() {
   const bindSel = (id, key) => { const el = $(id); if (el) el.addEventListener('change', () => { SETTINGS[key] = el.value; applyLiveSettings(); }); };
   bindSel('qualitySelect', 'quality'); bindSel('setQuality', 'quality');
   bindSel('touchSelect', 'touch'); bindSel('setTouch', 'touch');
+  bindSel('setPost', 'post');
   if ($('setSens')) $('setSens').addEventListener('input', () => { SETTINGS.sens = parseFloat($('setSens').value); $('sensVal').textContent = SETTINGS.sens.toFixed(1) + '×'; saveSettings(); });
   if ($('setVol')) $('setVol').addEventListener('input', () => { SETTINGS.vol = parseInt($('setVol').value, 10); $('volVal').textContent = SETTINGS.vol + '%'; applyLiveSettings(); playTone(800, 0.04, 0.05); });
   if ($('setInvert')) $('setInvert').addEventListener('change', () => { SETTINGS.invert = $('setInvert').checked; saveSettings(); });
@@ -1386,6 +1572,7 @@ function loop(now) {
     G.bloom = Math.max(0, (G.bloom || 0) - dt * 5);
   }
   if (G.world && G.world.updateWorld) G.world.updateWorld(t, dt, G.camera.position);
+  updatePollen(t);
   checkLocation(now);
   if (G.particles) G.particles.update(dt);
 
@@ -1500,7 +1687,7 @@ function loop(now) {
   // minimap @ 5Hz
   if (now - G.lastMinimap > 200) { G.lastMinimap = now; drawMinimap(); }
 
-  if (G.renderer && G.scene) G.renderer.render(G.scene, G.camera);
+  if (G.renderer && G.scene) renderFrame(G.scene, G.camera);
 }
 
 function buildMinimapBase() {

@@ -681,25 +681,60 @@ export function buildWorld(scene, data, quality = {}) {
     }
     return out;
   }
-  const grassMat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide });
+  const grassCam = { value: new THREE.Vector3() };
+  // Blade-tuft geometry: 3 tapered blades, up-facing normals (Fortnite-style flat
+  // lighting), dark base -> bright tip vertex gradient.
+  function bladeTuftGeometry() {
+    const pos = [], norm = [], col = [], idx = [];
+    let vi = 0;
+    for (let b = 0; b < 3; b++) {
+      const a = b * (Math.PI * 2 / 3) + 0.45;
+      const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
+      const w = 0.085, bend = 0.26;
+      const verts = [
+        [-px * w, 0, -pz * w, 0.30, 0.36, 0.13],
+        [px * w, 0, pz * w, 0.30, 0.36, 0.13],
+        [dx * bend - px * w * 0.22, 1, dz * bend - pz * w * 0.22, 1.25, 1.3, 0.8],
+        [dx * bend + px * w * 0.22, 1, dz * bend + pz * w * 0.22, 1.25, 1.3, 0.8],
+      ];
+      for (const v of verts) { pos.push(v[0], v[1], v[2]); norm.push(0, 1, 0); col.push(v[3], v[4], v[5]); }
+      idx.push(vi, vi + 1, vi + 3, vi, vi + 3, vi + 2);
+      vi += 4;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    return g;
+  }
+  const grassMat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, vertexColors: true });
   grassMat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = grassTime;
-    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `
+    sh.uniforms.uCamPos = grassCam;
+    sh.vertexShader = 'uniform float uTime;\nuniform vec3 uCamPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', `
       #include <begin_vertex>
       #ifdef USE_INSTANCING
-        vec4 ipos = instanceMatrix * vec4(0.0,0.0,0.0,1.0);
-        float sway = sin(uTime*1.9 + ipos.x*0.14 + ipos.z*0.19) * 0.22 * max(position.y + 0.55, 0.0);
-        transformed.x += sway; transformed.z += sway * 0.6;
+        vec4 gwp = modelMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0);
+        float hf = clamp(position.y, 0.0, 1.0);
+        // fade tufts out with distance (kills pop-in, saves fill)
+        float gfade = 1.0 - smoothstep(130.0, 215.0, distance(gwp.xz, uCamPos.xz));
+        transformed.xz *= gfade; transformed.y *= gfade;
+        // travelling gusts + per-tuft flutter
+        float gust = sin(uTime*1.25 + gwp.x*0.045 + gwp.z*0.06)*0.5+0.5;
+        float flutter = sin(uTime*2.3 + gwp.x*0.33 + gwp.z*0.27);
+        float gsw = (flutter*0.10 + gust*gust*0.40) * hf * hf;
+        transformed.x += gsw * 0.6; transformed.z += gsw * 0.34;
       #endif
     `);
   };
-  const grassMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.16, 1.15, 4), grassMat, Math.max(1, grassCount));
+  const grassMesh = new THREE.InstancedMesh(bladeTuftGeometry(), grassMat, Math.max(1, grassCount));
   scatter(grassCount, (x, y, z) => {
-    dummy.position.set(x, y + 0.45, z);
-    dummy.scale.set(1.4 + rng(), 1 + rng() * 1.5, 1.4 + rng());
-    dummy.rotation.set((rng() - 0.5) * 0.35, rng() * 3, (rng() - 0.5) * 0.35); dummy.updateMatrix();
+    dummy.position.set(x, y - 0.06, z);
+    dummy.scale.set(1.5 + rng() * 1.3, 1 + rng() * 1.6, 1.5 + rng() * 1.3);
+    dummy.rotation.set((rng() - 0.5) * 0.3, rng() * 3, (rng() - 0.5) * 0.3); dummy.updateMatrix();
     return dummy.matrix.clone();
-  }).forEach((m, i) => { grassMesh.setMatrixAt(i, m); grassMesh.setColorAt(i, tmpColor.setHSL(0.26 + rng() * 0.08, 0.55, 0.3 + rng() * 0.18)); });
+  }).forEach((m, i) => { grassMesh.setMatrixAt(i, m); grassMesh.setColorAt(i, tmpColor.setHSL(0.24 + rng() * 0.09, 0.6, 0.32 + rng() * 0.2)); });
   scene.add(grassMesh);
 
   const bushMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.5, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), 320);
@@ -762,8 +797,24 @@ export function buildWorld(scene, data, quality = {}) {
   });
   const pineTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.42, 3.6, 6), new THREE.MeshStandardMaterial({ color: 0x5d4126, roughness: 1 }), Math.max(1, pineSpots.length));
   const pineFol = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+  const swayify = (mat) => {
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = grassTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `
+        #include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vec4 pwp = instanceMatrix * vec4(0.0,0.0,0.0,1.0);
+          float psw = sin(uTime*1.1 + pwp.x*0.05 + pwp.z*0.043) * 0.12 * smoothstep(-4.5, 4.5, position.y);
+          transformed.x += psw; transformed.z += psw * 0.5;
+        #endif
+      `);
+    };
+    mat.customProgramCacheKey = () => 'pineSway';
+    return mat;
+  };
+  swayify(pineFol);
   const pineCan = new THREE.InstancedMesh(new THREE.ConeGeometry(2.6, 8.5, 7), pineFol, Math.max(1, pineSpots.length));
-  const pineCan2 = new THREE.InstancedMesh(new THREE.ConeGeometry(1.8, 6, 7), pineFol.clone(), Math.max(1, pineSpots.length));
+  const pineCan2 = new THREE.InstancedMesh(new THREE.ConeGeometry(1.8, 6, 7), swayify(pineFol.clone()), Math.max(1, pineSpots.length));
   pineCan.castShadow = true;
   pineSpots.forEach((t, i) => {
     dummy.rotation.set(0, t.r, 0);
@@ -869,6 +920,7 @@ export function buildWorld(scene, data, quality = {}) {
   function updateWorld(t, dt, cameraPos) {
     grassTime.value = t;
     waterfallTime.value = t;
+    if (cameraPos) grassCam.value.copy(cameraPos);
     cloudT += dt * 2.2;
     cloudGroup.position.x = (cloudT % 900) - 450;
     if (summit && summit.beaconMat) summit.beaconMat.opacity = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.4));
