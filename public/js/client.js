@@ -1,6 +1,6 @@
 // FortWorld client: auth, lobby, shop, FPS gameplay, building, HUD.
 import * as THREE from 'three';
-import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture } from './world.js';
+import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS } from './world.js';
 
 const $ = (id) => document.getElementById(id);
 const RARITY_COLORS = ['#b1b1b1', '#60aa3c', '#4d8fd1', '#b04dd1', '#e8a33d'];
@@ -17,9 +17,9 @@ let META = null;
 
 // ---------------- settings & quality ----------------
 const QUALITY_PRESETS = {
-  cinematic: { pixelRatio: Math.min(devicePixelRatio || 1, 2), shadow: 2048, grass: 16000, seg: 256, aniso: 8 },
-  balanced: { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadow: 1024, grass: 8000, seg: 192, aniso: 4 },
-  performance: { pixelRatio: 1, shadow: 512, grass: 2500, seg: 128, aniso: 2 },
+  cinematic: { pixelRatio: Math.min(devicePixelRatio || 1, 2), shadow: 2048, grass: 26000, seg: 320, aniso: 8 },
+  balanced: { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadow: 1024, grass: 12000, seg: 224, aniso: 4 },
+  performance: { pixelRatio: 1, shadow: 512, grass: 4000, seg: 160, aniso: 2 },
 };
 const HAS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 let SETTINGS = { quality: 'auto', touch: 'auto', sens: 1, vol: 80, invert: false, fps: false };
@@ -953,6 +953,35 @@ function initSettingsUI() {
 const SUN_DIR_V = new THREE.Vector3(0.5, 0.62, 0.35).normalize();
 function slotWeaponId() { const s = currentSlot(); return s && s.kind === 'weapon' ? s.weaponId : null; }
 
+// GTA-style location banner when entering a named place
+function checkLocation(now) {
+  if (!G.active || !G.data || G.mode === 'bus') return;
+  if (now - (G.lastLocCheck || 0) < 700) return;
+  G.lastLocCheck = now;
+  let place = null, sub = 'FORTWORLD ISLAND';
+  let bestScore = 1e9;
+  for (const p of G.data.pois) {
+    const d = Math.hypot(G.pos.x - p.x, G.pos.z - p.z);
+    if (d < p.r && d / p.r < bestScore) { bestScore = d / p.r; place = p.name; sub = 'FORTWORLD ISLAND'; }
+  }
+  if (G.pos.y > 42) {
+    for (const m of MOUNTAINS) {
+      const d = Math.hypot(G.pos.x - m.x, G.pos.z - m.z);
+      if (d < m.r * 0.95 && d / m.r < bestScore + 0.25) { place = m.name; sub = 'THE HIGHLANDS · ELEV ' + Math.round(G.pos.y) + 'M'; }
+    }
+  }
+  if (place && place !== G.currentPlace) {
+    G.currentPlace = place;
+    const b = $('locationBanner');
+    $('locationName').textContent = place.toUpperCase();
+    $('locationSub').textContent = sub;
+    b.classList.remove('hidden');
+    b.style.animation = 'none'; void b.offsetWidth; b.style.animation = '';
+    clearTimeout(checkLocation._t);
+    checkLocation._t = setTimeout(() => b.classList.add('hidden'), 2800);
+  } else if (!place) G.currentPlace = null;
+}
+
 // ---------------- main loop ----------------
 let lastT = performance.now();
 function loop(now) {
@@ -1124,7 +1153,8 @@ function loop(now) {
     $('crosshair').style.opacity = G.ads && slotWeaponId() === 'sniper' ? 0.25 : 1;
     G.bloom = Math.max(0, (G.bloom || 0) - dt * 5);
   }
-  if (G.world && G.world.updateWorld) G.world.updateWorld(t, dt);
+  if (G.world && G.world.updateWorld) G.world.updateWorld(t, dt, G.camera.position);
+  checkLocation(now);
   if (G.particles) G.particles.update(dt);
 
   // build ghost
@@ -1251,9 +1281,10 @@ function buildMinimapBase() {
     let r, g, b;
     if (h < -1.5) { r = 38; g = 110; b = 190; }
     else if (h < 1.2) { r = 224; g = 203; b = 150; }
-    else if (h > 58) { r = 238; g = 244; b = 252; }
+    else if (h > 118) { r = 240; g = 246; b = 253; }
+    else if (h > 62) { const tt = (h - 62) / 56; r = 128 + tt * 60; g = 122 + tt * 62; b = 112 + tt * 66; }
     else {
-      const tt = Math.min(1, h / 58);
+      const tt = Math.min(1, h / 62);
       r = 84 + tt * 40; g = 148 + tt * 30; b = 58 + tt * 20;
       if (Math.sin(wx * 0.02 + wz * 0.017) > 0.55) { r += 18; g += 22; }
     }
@@ -1261,6 +1292,14 @@ function buildMinimapBase() {
     img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
+  // mountain peak markers
+  ctx.fillStyle = '#eaf4ff';
+  ctx.strokeStyle = 'rgba(20,30,50,0.8)'; ctx.lineWidth = 0.8;
+  for (const m of MOUNTAINS) {
+    const x = (m.x + 2000) / 4000 * S, y = (m.z + 2000) / 4000 * S;
+    ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x - 3.4, y + 2.6); ctx.lineTo(x + 3.4, y + 2.6); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
   ctx.font = '800 7.5px Segoe UI'; ctx.textAlign = 'center';
   for (const p of G.data.pois) {
     const x = (p.x + 2000) / 4000 * S, y = (p.z + 2000) / 4000 * S;

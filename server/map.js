@@ -24,6 +24,16 @@ const HILLS = [
   { x: 1300, z: 300, r: 550, h: 45 },
 ];
 
+// Mountain massifs — real playable terrain (peaks ~180-290m). MUST match client world.js.
+const MOUNTAINS = [
+  { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 235 },
+  { name: 'Razorback Ridge', x: -1550, z: -1250, r: 520, h: 190 },
+  { name: 'Titan Peak', x: 850, z: -1600, r: 580, h: 210 },
+  { name: 'Kings Crown', x: 1550, z: 150, r: 560, h: 180 },
+  { name: 'Verde Highlands', x: -1550, z: 1100, r: 600, h: 170 },
+  { name: 'Solstice Peaks', x: 700, z: 1650, r: 520, h: 175 },
+];
+
 function terrainHeight(x, z) {
   // base rolling
   let h = Math.sin(x * 0.004) * 8 + Math.cos(z * 0.005) * 8 + Math.sin((x + z) * 0.0022) * 6;
@@ -33,6 +43,24 @@ function terrainHeight(x, z) {
     const d2 = dx * dx + dz * dz;
     h += hill.h * Math.exp(-d2 / (hill.r * hill.r));
   }
+  // mountain massifs with ridged detail
+  let mMask = 0, mHeight = 0;
+  for (const peak of MOUNTAINS) {
+    const dx = x - peak.x, dz = z - peak.z;
+    const d2 = dx * dx + dz * dz;
+    const fall = Math.exp(-d2 / (peak.r * peak.r));
+    const shaped = fall * fall * (3 - 2 * fall);
+    mHeight += peak.h * shaped;
+    if (shaped > mMask) mMask = shaped;
+  }
+  if (mMask > 0.01) {
+    const rn1 = 1 - Math.abs(Math.sin(x * 0.009 + Math.sin(z * 0.007) * 1.7));
+    const rn2 = 1 - Math.abs(Math.cos(z * 0.011 + Math.sin(x * 0.005) * 1.3));
+    const ridge = rn1 * 0.62 + rn2 * 0.38;
+    mHeight += mMask * (ridge - 0.48) * 44;
+    mHeight += mMask * Math.sin(x * 0.045 + z * 0.033) * 3.5;
+  }
+  h += mHeight;
   // island falloff to water at edges
   const edge = Math.max(Math.abs(x), Math.abs(z));
   if (edge > 1500) {
@@ -77,12 +105,13 @@ function genBuildings() {
   return buildings;
 }
 
-// Trees & rocks scattered, avoiding POI centers slightly
+// Trees & rocks scattered, avoiding POI centers. Treeline: no trees above ~100m;
+// high slopes are rock country.
 function genNature() {
   const rng = mulberry32(4242);
   const trees = [];
   const rocks = [];
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 1700; i++) {
     const x = (rng() - 0.5) * 3800;
     const z = (rng() - 0.5) * 3800;
     const h = terrainHeight(x, z);
@@ -93,8 +122,9 @@ function genNature() {
       if (dx * dx + dz * dz < p.r * p.r * 0.5) { inPoi = true; break; }
     }
     if (inPoi) continue;
-    if (rng() < 0.72) trees.push({ x, z, s: 0.7 + rng() * 0.9, r: rng() * Math.PI * 2 });
-    else rocks.push({ x, z, s: 0.6 + rng() * 1.4, r: rng() * Math.PI * 2 });
+    const rockChance = h > 100 ? 1 : h > 65 ? 0.65 : 0.26;
+    if (rng() < rockChance) rocks.push({ x, z, s: 0.6 + rng() * (h > 65 ? 2.0 : 1.4), r: rng() * Math.PI * 2 });
+    else trees.push({ x, z, s: 0.7 + rng() * 0.9, r: rng() * Math.PI * 2 });
   }
   return { trees, rocks };
 }
@@ -120,4 +150,4 @@ function genLootSpawns() {
 }
 const LOOT_SPAWNS = genLootSpawns();
 
-module.exports = { MAP_SIZE, HALF, terrainHeight, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS };
+module.exports = { MAP_SIZE, HALF, terrainHeight, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS };

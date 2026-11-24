@@ -9,15 +9,55 @@ const HILLS = [
   { x: 0, z: 0, r: 500, h: 30 }, { x: -300, z: 1400, r: 600, h: 40 },
   { x: 1300, z: 300, r: 550, h: 45 },
 ];
+export const MOUNTAINS = [
+  { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 235 },
+  { name: 'Razorback Ridge', x: -1550, z: -1250, r: 520, h: 190 },
+  { name: 'Titan Peak', x: 850, z: -1600, r: 580, h: 210 },
+  { name: 'Kings Crown', x: 1550, z: 150, r: 560, h: 180 },
+  { name: 'Verde Highlands', x: -1550, z: 1100, r: 600, h: 170 },
+  { name: 'Solstice Peaks', x: 700, z: 1650, r: 520, h: 175 },
+];
 export function terrainHeight(x, z) {
   let h = Math.sin(x * 0.004) * 8 + Math.cos(z * 0.005) * 8 + Math.sin((x + z) * 0.0022) * 6;
   for (const hill of HILLS) {
     const dx = x - hill.x, dz = z - hill.z;
     h += hill.h * Math.exp(-(dx * dx + dz * dz) / (hill.r * hill.r));
   }
+  let mMask = 0, mHeight = 0;
+  for (const peak of MOUNTAINS) {
+    const dx = x - peak.x, dz = z - peak.z;
+    const d2 = dx * dx + dz * dz;
+    const fall = Math.exp(-d2 / (peak.r * peak.r));
+    const shaped = fall * fall * (3 - 2 * fall);
+    mHeight += peak.h * shaped;
+    if (shaped > mMask) mMask = shaped;
+  }
+  if (mMask > 0.01) {
+    const rn1 = 1 - Math.abs(Math.sin(x * 0.009 + Math.sin(z * 0.007) * 1.7));
+    const rn2 = 1 - Math.abs(Math.cos(z * 0.011 + Math.sin(x * 0.005) * 1.3));
+    const ridge = rn1 * 0.62 + rn2 * 0.38;
+    mHeight += mMask * (ridge - 0.48) * 44;
+    mHeight += mMask * Math.sin(x * 0.045 + z * 0.033) * 3.5;
+  }
+  h += mHeight;
   const edge = Math.max(Math.abs(x), Math.abs(z));
   if (edge > 1500) { const t = Math.min(1, (edge - 1500) / 500); h = h * (1 - t) + (-14) * t; }
   return h;
+}
+// 0..1 mountain influence at a point (for colouring / scatter decisions)
+export function mountainMask(x, z) {
+  let m = 0;
+  for (const peak of MOUNTAINS) {
+    const dx = x - peak.x, dz = z - peak.z;
+    const fall = Math.exp(-(dx * dx + dz * dz) / (peak.r * peak.r));
+    const shaped = fall * fall * (3 - 2 * fall);
+    if (shaped > m) m = shaped;
+  }
+  return m;
+}
+export function slopeAt(x, z, eps = 7) {
+  const h = terrainHeight(x, z);
+  return Math.min(1.6, (Math.abs(terrainHeight(x + eps, z) - h) + Math.abs(terrainHeight(x, z + eps) - h)) / (eps * 0.55));
 }
 export const WATER_Y = -2;
 
@@ -293,6 +333,156 @@ function roadRibbon(scene, from, to, mat) {
   scene.add(m);
 }
 
+/* ---- distant ridge backdrops (layered GTA-style mountain silhouettes) ---- */
+function ridgeRing(baseR, topMin, topVar, seed, colBottom, colMid, colTop) {
+  const SEG = 180, rows = 3;
+  const posArr = [], colArr = [], idx = [];
+  const cols = [new THREE.Color(colBottom), new THREE.Color(colMid), new THREE.Color(colTop)];
+  const peakH = [];
+  for (let i = 0; i <= SEG; i++) {
+    const a = (i / SEG) * Math.PI * 2;
+    const n = 0.5 + 0.28 * Math.sin(a * 7 + seed) + 0.16 * Math.sin(a * 17 + seed * 2.7) + 0.10 * Math.sin(a * 31 + seed * 5.1);
+    const spike = Math.pow(Math.max(0, Math.sin(a * 11 + seed * 3.3)), 3) * 0.35;
+    peakH.push(topMin + (n + spike) * topVar);
+  }
+  for (let i = 0; i <= SEG; i++) {
+    const a = (i / SEG) * Math.PI * 2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const top = peakH[i];
+    const rowData = [
+      { r: baseR, y: -45 },
+      { r: baseR + 90, y: top * 0.52 },
+      { r: baseR + 190, y: top },
+    ];
+    rowData.forEach((row, ri) => {
+      posArr.push(ca * row.r, row.y, sa * row.r);
+      const c = cols[ri];
+      colArr.push(c.r, c.g, c.b);
+    });
+    if (i < SEG) {
+      const k = i * rows;
+      for (let rI = 0; rI < rows - 1; rI++) idx.push(k + rI, k + rI + 1, k + rI + rows, k + rI + 1, k + rI + rows + 1, k + rI + rows);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colArr, 3));
+  g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
+  m.frustumCulled = false;
+  return m;
+}
+function createMountainBackdrop(scene) {
+  scene.add(ridgeRing(2550, 200, 300, 1.7, 0x51637c, 0x7488a4, 0xe8f1fb));
+  scene.add(ridgeRing(3500, 340, 420, 4.2, 0x5d7191, 0x8699b5, 0xf2f7fd));
+}
+
+/* ---- waterfall: ribbon following the downhill gradient, animated foam shader ---- */
+const waterfallTime = { value: 0 };
+function createWaterfall(scene, startX, startZ, pullX, pullZ) {
+  const pts = [];
+  let x = startX, z = startZ;
+  for (let i = 0; i < 34; i++) {
+    pts.push({ x, z, y: terrainHeight(x, z) });
+    const e = 9;
+    const gx = (terrainHeight(x + e, z) - terrainHeight(x - e, z)) / (2 * e);
+    const gz = (terrainHeight(x, z + e) - terrainHeight(x, z - e)) / (2 * e);
+    let dx = -gx * 3.2 + (pullX - x) * 0.0016, dz = -gz * 3.2 + (pullZ - z) * 0.0016;
+    const l = Math.hypot(dx, dz) || 1;
+    x += (dx / l) * 13; z += (dz / l) * 13;
+    if (terrainHeight(x, z) < 6) break;
+  }
+  if (pts.length < 6) return null;
+  const posArr = [], uvArr = [], idx = [];
+  let dist = 0;
+  pts.forEach((p, i) => {
+    const next = pts[Math.min(i + 1, pts.length - 1)], prev = pts[Math.max(i - 1, 0)];
+    if (i > 0) dist += Math.hypot(p.x - prev.x, p.z - prev.z);
+    let dx = next.x - prev.x, dz = next.z - prev.z;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const sx = -dz * 1.9, sz = dx * 1.9;
+    posArr.push(p.x - sx, p.y + 0.5, p.z - sz, p.x + sx, p.y + 0.5, p.z + sz);
+    uvArr.push(0, dist / 9, 1, dist / 9);
+    if (i < pts.length - 1) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvArr, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    uniforms: { uTime: waterfallTime },
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform float uTime; varying vec2 vUv;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+      void main(){
+        float flow = noise(vec2(vUv.x*7.0, vUv.y*6.0 - uTime*1.9));
+        float streaks = 0.65 + 0.35*sin(vUv.y*90.0 - uTime*14.0 + flow*7.0);
+        vec3 col = mix(vec3(0.62,0.83,0.98), vec3(1.0), flow*streaks);
+        float edge = smoothstep(0.0,0.3,vUv.x) * smoothstep(1.0,0.7,vUv.x);
+        float head = smoothstep(0.0, 2.5, vUv.y);
+        gl_FragColor = vec4(col, 0.82 * edge * head);
+      }`,
+  });
+  const mesh = new THREE.Mesh(g, mat);
+  scene.add(mesh);
+  // foam glow at the plunge pool
+  const end = pts[pts.length - 1];
+  const foam = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xdff4ff, transparent: true, opacity: 0.55, depthWrite: false }));
+  foam.scale.set(17, 8, 1); foam.position.set(end.x, end.y + 1.6, end.z);
+  scene.add(foam);
+  return mesh;
+}
+
+/* ---- summit structures: observatory on Apex, radio tower on Titan ---- */
+function createSummitProps(scene, colliders) {
+  const concrete = new THREE.MeshStandardMaterial({ color: 0xb9bec7, roughness: 0.85 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x39424f, roughness: 0.4, metalness: 0.7 });
+  // Observatory — Mount Apex
+  const apex = MOUNTAINS[0];
+  const ay = terrainHeight(apex.x, apex.z);
+  const obs = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(8, 9.5, 6, 14), concrete); base.position.y = 3; base.castShadow = true;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(7.6, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xe8edf4, roughness: 0.25, metalness: 0.55 }));
+  dome.position.y = 6; dome.castShadow = true;
+  const slit = new THREE.Mesh(new THREE.BoxGeometry(2.2, 5.5, 8.5), metal); slit.position.set(0, 8.6, 2.4); slit.rotation.x = -0.5;
+  const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 7, 10), metal); scope.position.set(0, 9.4, 3.4); scope.rotation.x = -0.9;
+  obs.add(base, dome, slit, scope);
+  obs.position.set(apex.x, ay - 0.4, apex.z);
+  scene.add(obs);
+  colliders.push({ minX: apex.x - 9, maxX: apex.x + 9, minZ: apex.z - 9, maxZ: apex.z + 9, minY: ay - 0.5, maxY: ay + 6, type: 'building' });
+  // Radio tower — Titan Peak
+  const titan = MOUNTAINS[2];
+  const ty = terrainHeight(titan.x, titan.z);
+  const tower = new THREE.Group();
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 2.4, 44, 6), metal); mast.position.y = 22; mast.castShadow = true;
+  tower.add(mast);
+  for (let i = 1; i <= 4; i++) {
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(7 - i, 0.5, 0.5), metal);
+    cross.position.y = i * 9; tower.add(cross);
+    const cross2 = cross.clone(); cross2.rotation.y = Math.PI / 2; tower.add(cross2);
+  }
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(3.4, 12, 6, 0, Math.PI * 2, 0, 0.9), new THREE.MeshStandardMaterial({ color: 0xdfe6ee, roughness: 0.3, metalness: 0.4, side: THREE.DoubleSide }));
+  dish.position.set(2.6, 30, 0); dish.rotation.z = -0.9;
+  const hut = new THREE.Mesh(new THREE.BoxGeometry(6, 3.4, 5), concrete); hut.position.set(6, 1.7, 3); hut.castShadow = true;
+  tower.add(dish, hut);
+  tower.position.set(titan.x, ty - 0.3, titan.z);
+  scene.add(tower);
+  colliders.push({ minX: titan.x - 3, maxX: titan.x + 9, minZ: titan.z - 3, maxZ: titan.z + 6, minY: ty - 0.5, maxY: ty + 4, type: 'building' });
+  // blinking aviation light
+  const lightMat = new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xff4444, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending });
+  const beacon = new THREE.Sprite(lightMat);
+  beacon.scale.set(9, 9, 1); beacon.position.set(titan.x, ty + 45, titan.z);
+  scene.add(beacon);
+  const apexBeacon = beacon.clone(); apexBeacon.material = lightMat;
+  apexBeacon.position.set(apex.x, ay + 15, apex.z); apexBeacon.scale.set(7, 7, 1);
+  scene.add(apexBeacon);
+  return { beaconMat: lightMat };
+}
+
 export function buildWorld(scene, data, quality = {}) {
   const colliders = [];
   const grassCount = quality.grass != null ? quality.grass : 8000;
@@ -307,17 +497,30 @@ export function buildWorld(scene, data, quality = {}) {
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   const cGrass = new THREE.Color(0x5da23c), cGrass2 = new THREE.Color(0x93c24e), cSand = new THREE.Color(0xe6d29b),
-    cRock = new THREE.Color(0x8a8578), cSnow = new THREE.Color(0xf4f8ff), cDirt = new THREE.Color(0x9a7b4f), cScorch = new THREE.Color(0x6f7f3a);
+    cRock = new THREE.Color(0x8a8578), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xf4f8ff), cDirt = new THREE.Color(0x9a7b4f), cScorch = new THREE.Color(0x6f7f3a),
+    cForest = new THREE.Color(0x3e7031), cScree = new THREE.Color(0xa49a86);
   const tmp = new THREE.Color();
+  const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     const h = terrainHeight(x, z);
     pos.setY(i, h);
     const slope = Math.min(1, (Math.abs(terrainHeight(x + 8, z) - h) + Math.abs(terrainHeight(x, z + 8) - h)) / 7);
     const n = 0.5 + 0.5 * Math.sin(x * 0.021 + z * 0.017) * Math.sin(x * 0.006 - z * 0.011);
+    const mm = mountainMask(x, z);
     if (h < 1.2) tmp.copy(cSand).lerp(cDirt, n * 0.3);
-    else if (h > 60) tmp.copy(cSnow).lerp(cRock, slope * 1.1);
-    else { tmp.copy(cGrass).lerp(cGrass2, n); tmp.lerp(cScorch, Math.max(0, n - 0.72) * 0.8); tmp.lerp(cDirt, slope * 0.45); tmp.lerp(cRock, Math.max(0, slope - 0.42) * 1.1); }
+    else {
+      tmp.copy(cGrass).lerp(cGrass2, n);
+      tmp.lerp(cScorch, Math.max(0, n - 0.72) * 0.8);
+      tmp.lerp(cForest, mm * 0.55 * (1 - slope));                    // dark alpine forest floor
+      tmp.lerp(cDirt, slope * 0.4);
+      tmp.lerp(cScree, smooth(28, 70, h) * 0.45 * (1 - slope));      // scree aprons
+      tmp.lerp(cRock, Math.max(0, slope - 0.34) * 1.25);             // exposed cliffs
+      tmp.lerp(cRockDark, smooth(45, 120, h) * slope * 0.55);       // high dark rock
+      const snow = smooth(96, 150, h + n * 26) * (1 - Math.max(0, slope - 0.55) * 1.6);
+      tmp.lerp(cSnow, Math.max(0, Math.min(1, snow)));               // snowfields & caps
+      if (h > 55) tmp.lerp(cRock, smooth(55, 95, h) * 0.25);
+    }
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -518,17 +721,120 @@ export function buildWorld(scene, data, quality = {}) {
   }).forEach((m, i) => { flowerMesh.setMatrixAt(i, m); flowerMesh.setColorAt(i, tmpColor.setHex(flowerCols[i % flowerCols.length])); });
   scene.add(flowerMesh);
 
-  /* ---- distant mountain ring + clouds ---- */
-  const mtnMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 6), new THREE.MeshStandardMaterial({ color: 0x6f86a8, roughness: 1, flatShading: true }), 16);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2 + rng() * 0.2;
-    const rad = 2700 + rng() * 800;
-    dummy.position.set(Math.cos(a) * rad, -12, Math.sin(a) * rad);
-    dummy.scale.set(500 + rng() * 420, 480 + rng() * 430, 500 + rng() * 420);
-    dummy.rotation.set(0, rng() * 3, 0); dummy.updateMatrix();
-    mtnMesh.setMatrixAt(i, dummy.matrix);
+  /* ---- dense decorative pine forests + cliff boulders (visual density) ---- */
+  const roadSegs = [];
+  data.pois.forEach((p, i) => {
+    roadSegs.push([p, { x: 0, z: 0 }]);
+    if (i > 0) roadSegs.push([data.pois[i - 1], p]);
+  });
+  function distToRoads(x, z) {
+    let best = 1e9;
+    for (const [a, b] of roadSegs) {
+      const vx = b.x - a.x, vz = b.z - a.z;
+      const wx = x - a.x, wz = z - a.z;
+      const t = Math.max(0, Math.min(1, (wx * vx + wz * vz) / (vx * vx + vz * vz || 1)));
+      const d = Math.hypot(x - (a.x + vx * t), z - (a.z + vz * t));
+      if (d < best) best = d;
+    }
+    return best;
   }
-  scene.add(mtnMesh);
+  function scatterAccept(count, accept) {
+    const out = [];
+    let guard = count * 60;
+    while (out.length < count && guard-- > 0) {
+      const x = (rng() - 0.5) * 3800, z = (rng() - 0.5) * 3800;
+      const y = terrainHeight(x, z);
+      const v = accept(x, y, z);
+      if (v) out.push(v);
+    }
+    return out;
+  }
+  const detailScale = Math.max(0.35, Math.min(2.4, grassCount / 8000));
+  const pineCount = Math.round(2400 * detailScale);
+  const pineSpots = scatterAccept(pineCount, (x, y, z) => {
+    if (y < 6 || y > 118) return null;
+    const mm = mountainMask(x, z);
+    if (y < 30 && mm < 0.12 && rng() < 0.55) return null; // thickest on mountain slopes
+    if (slopeAt(x, z) > 0.95) return null;
+    if (distToRoads(x, z) < 13) return null;
+    for (const p of data.pois) { const dx = x - p.x, dz = z - p.z; if (dx * dx + dz * dz < (p.r * 0.6) ** 2) return null; }
+    return { x, y, z, s: 0.8 + rng() * 1.1, r: rng() * 3 };
+  });
+  const pineTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.42, 3.6, 6), new THREE.MeshStandardMaterial({ color: 0x5d4126, roughness: 1 }), Math.max(1, pineSpots.length));
+  const pineFol = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+  const pineCan = new THREE.InstancedMesh(new THREE.ConeGeometry(2.6, 8.5, 7), pineFol, Math.max(1, pineSpots.length));
+  const pineCan2 = new THREE.InstancedMesh(new THREE.ConeGeometry(1.8, 6, 7), pineFol.clone(), Math.max(1, pineSpots.length));
+  pineCan.castShadow = true;
+  pineSpots.forEach((t, i) => {
+    dummy.rotation.set(0, t.r, 0);
+    dummy.position.set(t.x, t.y + 1.7 * t.s, t.z); dummy.scale.setScalar(t.s); dummy.updateMatrix();
+    pineTrunk.setMatrixAt(i, dummy.matrix);
+    dummy.position.y = t.y + 6.2 * t.s; dummy.updateMatrix();
+    pineCan.setMatrixAt(i, dummy.matrix);
+    pineCan.setColorAt(i, tmpColor.setHSL(0.33 + rng() * 0.05, 0.42, 0.2 + rng() * 0.1));
+    dummy.position.y = t.y + 9.6 * t.s; dummy.scale.setScalar(t.s * 0.9); dummy.updateMatrix();
+    pineCan2.setMatrixAt(i, dummy.matrix);
+    pineCan2.setColorAt(i, tmpColor.setHSL(0.32 + rng() * 0.05, 0.4, 0.24 + rng() * 0.1));
+  });
+  scene.add(pineTrunk, pineCan, pineCan2);
+
+  const cliffCount = Math.round(1100 * detailScale);
+  const cliffSpots = scatterAccept(cliffCount, (x, y, z) => {
+    if (y < 4) return null;
+    const sl = slopeAt(x, z);
+    if (sl < 0.34 && mountainMask(x, z) < 0.25) return null;
+    if (distToRoads(x, z) < 10) return null;
+    return { x, y, z, s: 0.8 + rng() * (sl > 0.6 ? 3.4 : 1.8), r: rng() * 3, sl };
+  });
+  const cliffMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2.4, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, bumpMap: detailBumpTex(), bumpScale: 1.2 }), Math.max(1, cliffSpots.length));
+  cliffMesh.castShadow = true;
+  cliffSpots.forEach((r, i) => {
+    dummy.position.set(r.x, r.y + r.s * 0.3, r.z);
+    dummy.scale.set(r.s * 1.3, r.s * (0.65 + rng() * 0.5), r.s);
+    dummy.rotation.set(r.r, r.r * 1.7, rng() * 0.6); dummy.updateMatrix();
+    cliffMesh.setMatrixAt(i, dummy.matrix);
+    cliffMesh.setColorAt(i, tmpColor.setHSL(0.07, 0.03 + rng() * 0.06, 0.34 + rng() * 0.2));
+  });
+  scene.add(cliffMesh);
+
+  /* ---- GTA-scale scenery: layered backdrops, waterfalls, summits, birds ---- */
+  createMountainBackdrop(scene);
+  const summit = createSummitProps(scene, colliders);
+  createWaterfall(scene, MOUNTAINS[0].x + 30, MOUNTAINS[0].z + 90, -150, -700);
+  createWaterfall(scene, MOUNTAINS[4].x + 260, MOUNTAINS[4].z - 60, -900, 600);
+
+  // mountain name labels
+  for (const peak of MOUNTAINS) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 110;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(12,18,34,0.5)';
+    if (g.roundRect) { g.beginPath(); g.roundRect(76, 18, 360, 66, 16); g.fill(); }
+    else g.fillRect(76, 18, 360, 66);
+    g.font = '900 36px Segoe UI, sans-serif'; g.textAlign = 'center';
+    g.shadowColor = '#000'; g.shadowBlur = 8; g.fillStyle = '#cfe8ff';
+    g.fillText('⛰ ' + peak.name.toUpperCase(), 256, 62);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.92 }));
+    spr.scale.set(120, 26, 1);
+    spr.position.set(peak.x, terrainHeight(peak.x, peak.z) + 58, peak.z);
+    scene.add(spr);
+  }
+
+  // birds riding thermals over the peaks
+  const birdGeo = new THREE.BufferGeometry();
+  birdGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+    -1.3, 0, 0, 0, 0, 0.35, 0, 0, -0.35,
+    0, 0, 0.35, 1.3, 0, 0, 0, 0, -0.35,
+  ], 3));
+  birdGeo.computeVertexNormals();
+  const birdMesh = new THREE.InstancedMesh(birdGeo, new THREE.MeshBasicMaterial({ color: 0x1d2836, side: THREE.DoubleSide }), 22);
+  birdMesh.frustumCulled = false;
+  const birds = [];
+  for (let i = 0; i < 22; i++) {
+    const peak = MOUNTAINS[i % MOUNTAINS.length];
+    birds.push({ cx: peak.x, cz: peak.z, cy: terrainHeight(peak.x, peak.z) + 52 + rng() * 45, r: 55 + rng() * 95, sp: 0.05 + rng() * 0.05, ph: rng() * 9, s: 1.7 + rng() * 1.1 });
+  }
+  scene.add(birdMesh);
 
   const cloudGroup = new THREE.Group();
   const cloudMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78, fog: false }), 90);
@@ -560,12 +866,26 @@ export function buildWorld(scene, data, quality = {}) {
   }
 
   let cloudT = 0;
-  function updateWorld(t, dt) {
+  function updateWorld(t, dt, cameraPos) {
     grassTime.value = t;
+    waterfallTime.value = t;
     cloudT += dt * 2.2;
     cloudGroup.position.x = (cloudT % 900) - 450;
+    if (summit && summit.beaconMat) summit.beaconMat.opacity = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.4));
+    // birds circling thermals
+    if (typeof birdMesh !== 'undefined') {
+      birds.forEach((b, i) => {
+        const a = b.ph + t * b.sp * (i % 2 ? 1 : -1);
+        dummy.position.set(b.cx + Math.cos(a) * b.r, b.cy + Math.sin(t * 0.7 + b.ph) * 5, b.cz + Math.sin(a) * b.r);
+        dummy.rotation.set(0, -a + (i % 2 ? 0 : Math.PI), Math.sin(t * 8 + b.ph) * 0.38);
+        dummy.scale.setScalar(b.s);
+        dummy.updateMatrix();
+        birdMesh.setMatrixAt(i, dummy.matrix);
+      });
+      birdMesh.instanceMatrix.needsUpdate = true;
+    }
   }
-  return { colliders, trunkMesh, canMesh, canMesh2, rockMesh, grassMesh, updateWorld };
+  return { colliders, trunkMesh, canMesh, canMesh2, rockMesh, grassMesh, pineCan, cliffMesh, updateWorld };
 }
 
 export function hideNode(worldRefs, data, type, index) {

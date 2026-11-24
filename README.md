@@ -14,6 +14,15 @@ npm start
 
 Create an account, sign in as a guest, or log back in anytime — stats, level, XP, V-Bucks and skins persist between sessions.
 
+## ⛰️ The Highlands (GTA-scale terrain pass)
+
+- **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (275 m), Kings Crown (212 m), Razorback Ridge, Titan Peak, Verde Highlands and Solstice Peaks — with ridged-noise crags, scree aprons, cliff faces, dark alpine forest floors and snowfields above ~110 m
+- **Layered distant ridge backdrops** ringing the island for that open-world horizon depth, plus drifting clouds and birds circling thermals over the summits
+- **~5,000 decorative pines** thickening on mountain slopes (above the harvestable treeline rules), 1,000+ cliff boulders on steep faces
+- **Two animated waterfalls** that carve their own downhill path from the highlands with scrolling foam shaders and plunge-pool glow
+- **Summit landmarks**: an observatory on Mount Apex and a radio tower with blinking aviation beacon on Titan Peak (both solid), mountain name labels in-world, peak markers on the minimap, and GTA-style **location banners** ("MOUNT APEX — THE HIGHLANDS · ELEV 214M") as you explore
+- The Battle Bus now cruises at 320 m to clear the peaks — sniper nests on the summits are very real
+
 ## 🎬 AAA Presentation Pass
 
 - **Procedural PBR textures** generated in-code (no downloads): building facades with lit windows, asphalt roads connecting every POI, concrete plazas, wood/stone/metal build materials, terrain micro-detail bump mapping
