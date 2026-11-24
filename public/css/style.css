@@ -344,3 +344,14 @@ a.discord-btn{text-decoration:none}
 .derc-foot{position:relative;z-index:4;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:20px 28px 26px;color:#555;font-size:.62rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
 .derc-foot a{color:#888;text-decoration:none}.derc-foot a:hover{color:#fff}
 @media(max-width:1080px){.derc-lower{grid-template-columns:1fr}.derc-side{flex-direction:row;flex-wrap:wrap;align-items:center}.derc-side-title{width:100%}.derc-slant{flex:1;text-align:center;padding-left:12px}.derc-mini{width:100%}.derc-nav a:not(.derc-discord){display:none}}
+
+/* Match loading = first-screen (Derc) design; the old second loading screen is gone */
+.derc-load{background:#050505;font-family:'Raleway','Segoe UI',sans-serif}
+.derc-load-inner{position:relative;z-index:4;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+.derc-load-title{font-weight:900;font-size:clamp(2.4rem,8vw,4.6rem);line-height:.95;letter-spacing:.01em;color:#fff;text-transform:uppercase;text-shadow:0 10px 60px rgba(0,0,0,.7)}
+.derc-load-title span{animation:dercBlink 1.6s steps(1) infinite}
+.derc-load-sub{margin-top:12px;font-weight:200;font-size:.85rem;letter-spacing:.42em;text-transform:uppercase;color:#aaa}
+.derc-load-bar{margin-top:40px;width:min(430px,72vw);height:3px;background:#222;clip-path:polygon(3px 0,100% 0,calc(100% - 3px) 100%,0 100%)}
+.derc-load-bar #loadingFill{height:100%;width:0;background:#fff;transition:width .35s ease}
+.derc-load-text{margin-top:16px;color:#888;font-weight:800;font-size:.68rem;letter-spacing:.26em;text-transform:uppercase}
+.derc-load-tip{margin-top:10px;color:#555;font-weight:200;font-size:.78rem;letter-spacing:.06em}
