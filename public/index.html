@@ -328,8 +328,15 @@
   </div>
 </div>
 
-<div id="loadingScreen" class="screen hidden">
-  <div class="loading-wrap"><div class="logo">DROPZONE<span>X</span></div><div class="loading-bar"><div id="loadingFill"></div></div><p id="loadingText">Building island…</p><p id="loadingTip" class="tiny">Tip: Legendary (orange) weapons hit up to 38% harder.</p></div>
+<div id="loadingScreen" class="screen hidden derc-load">
+  <div class="derc-bg"><img src="/img/hero.jpg" alt=""></div>
+  <div class="derc-load-inner">
+    <div class="derc-load-title">DROPZONE<span>_X</span></div>
+    <div class="derc-load-sub">drop &middot; loot &middot; survive</div>
+    <div class="derc-load-bar"><div id="loadingFill"></div></div>
+    <p id="loadingText" class="derc-load-text">Building island&hellip;</p>
+    <p id="loadingTip" class="derc-load-tip">Tip: Legendary (orange) weapons hit up to 38% harder.</p>
+  </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

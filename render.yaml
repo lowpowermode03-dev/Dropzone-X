@@ -1,0 +1,19 @@
+# One-click persistent game server for Dropzone X (Render Blueprint).
+# Use this when the website lives on Vercel: Vercel serves pages + API, this
+# service runs the real-time Socket.IO matches. Set the SAME values here and
+# in Vercel: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and JWT_SECRET must match
+# on both, or logins issued by the website won't be accepted by the game server.
+services:
+  - type: web
+    name: dropzone-x-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false

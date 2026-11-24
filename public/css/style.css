@@ -7,9 +7,9 @@ button{cursor:pointer;font-family:inherit;touch-action:manipulation;user-select:
 input,select{font-family:inherit}
 select{background:#23264d;color:#fff;border:1px solid #ffffff38;border-radius:8px;padding:7px 9px;font-weight:700}
 .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:20}
-#authScreen{background:radial-gradient(1100px 500px at 85% -10%,#7d3ff255,transparent 60%),radial-gradient(900px 600px at 8% 110%,#0e9a7a55,transparent 55%),linear-gradient(160deg,#1b1040 0%,#123a6b 55%,#0e5a4d 100%);overflow-y:auto}
+#authScreen{overflow-y:auto}
 #lobbyScreen{background:radial-gradient(1000px 480px at 90% -10%,#7d3ff244,transparent 60%),radial-gradient(800px 500px at 0% 110%,#0e9a7a44,transparent 55%),linear-gradient(160deg,#141033,#10294d 60%,#0b3d3a);flex-direction:column;align-items:stretch;justify-content:flex-start;overflow-y:auto}
-#loadingScreen{background:radial-gradient(800px 400px at 50% 30%,#2a1a66,#0e1020 70%);z-index:40}
+#loadingScreen{z-index:40}
 .screen.overlay{background:rgba(5,5,20,.74);z-index:35;backdrop-filter:blur(4px)}
 .logo{font-size:64px;font-weight:900;letter-spacing:2px;background:linear-gradient(180deg,#fff 30%,#ffd76a 75%,#e8a33d);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 0 rgba(0,0,0,.4)) drop-shadow(0 0 26px rgba(155,93,229,.55))}
 .logo span{background:linear-gradient(180deg,#ffe89a,#e8a33d);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -202,9 +202,6 @@ body.touch.playing.busmode #btnJumpBus{display:block}
 .set-row label{flex:1}
 .set-row input[type=range]{flex:1;accent-color:var(--purple);height:36px}
 .set-row.check input{width:24px;height:24px;accent-color:var(--purple)}
-.loading-wrap{text-align:center;padding:20px}
-.loading-bar{width:min(360px,86vw);height:14px;background:#ffffff1d;border-radius:99px;overflow:hidden;margin:22px auto;box-shadow:inset 0 2px 6px #0008}
-#loadingFill{height:100%;width:8%;background:linear-gradient(90deg,var(--purple),var(--gold));transition:width .3s}
 canvas.game{display:block;touch-action:none}
 /* ---- responsive / mobile lobby ---- */
 @media(max-width:1000px){.lobby-grid{grid-template-columns:1fr 1fr}.stats-panel{order:2}.shop-panel{order:3}.lobby-center{order:1;grid-column:1/-1}}
@@ -344,3 +341,14 @@ a.discord-btn{text-decoration:none}
 .derc-foot{position:relative;z-index:4;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:20px 28px 26px;color:#555;font-size:.62rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
 .derc-foot a{color:#888;text-decoration:none}.derc-foot a:hover{color:#fff}
 @media(max-width:1080px){.derc-lower{grid-template-columns:1fr}.derc-side{flex-direction:row;flex-wrap:wrap;align-items:center}.derc-side-title{width:100%}.derc-slant{flex:1;text-align:center;padding-left:12px}.derc-mini{width:100%}.derc-nav a:not(.derc-discord){display:none}}
+
+/* Match loading = first-screen (Derc) design; the old second loading screen is gone */
+.derc-load{background:#050505;font-family:'Raleway','Segoe UI',sans-serif}
+.derc-load-inner{position:relative;z-index:4;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+.derc-load-title{font-weight:900;font-size:clamp(2.4rem,8vw,4.6rem);line-height:.95;letter-spacing:.01em;color:#fff;text-transform:uppercase;text-shadow:0 10px 60px rgba(0,0,0,.7)}
+.derc-load-title span{animation:dercBlink 1.6s steps(1) infinite}
+.derc-load-sub{margin-top:12px;font-weight:200;font-size:.85rem;letter-spacing:.42em;text-transform:uppercase;color:#aaa}
+.derc-load-bar{margin-top:40px;width:min(430px,72vw);height:3px;background:#222;clip-path:polygon(3px 0,100% 0,calc(100% - 3px) 100%,0 100%)}
+.derc-load-bar #loadingFill{height:100%;width:0;background:#fff;transition:width .35s ease}
+.derc-load-text{margin-top:16px;color:#888;font-weight:800;font-size:.68rem;letter-spacing:.26em;text-transform:uppercase}
+.derc-load-tip{margin-top:10px;color:#555;font-weight:200;font-size:.78rem;letter-spacing:.06em}

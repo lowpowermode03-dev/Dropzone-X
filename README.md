@@ -44,6 +44,15 @@ The repo is Vercel-ready (`vercel.json` + `api/index.js` serverless entry; the s
 
 > ⚠️ Honest note on realtime: Vercel functions are short-lived and stateless, so Socket.IO match rooms (which live in server memory) can't hold 24-player matches there reliably. For full multiplayer matches, run the same code on a persistent host — Render / Railway / Fly / a VPS — with `npm start` and the same env vars. A common setup: Vercel serves the site + API, and the game server runs on Railway.
 
+### "I'm not running npm start" — playing without a terminal
+
+- **This repo's hosted preview**: nothing to run — the server is already up.
+- **Vercel-only deploy**: homepage, accounts, shop and stats work, but the match queue can't connect (see the note above). Fix it without touching a terminal:
+  1. Go to [render.com](https://render.com) → **New → Blueprint** → pick this repo (it reads `render.yaml`) → set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` when asked → **Deploy**. (Free tier sleeps when idle; the first match of the day takes ~30 s to wake.)
+  2. Copy your new service URL, e.g. `https://dropzone-x-server.onrender.com`.
+  3. Open your Vercel site once as `https://your-site.vercel.app/?server=https://dropzone-x-server.onrender.com` — the browser remembers the game server from then on.
+  4. Make sure `JWT_SECRET` and the Supabase values are **identical** in Vercel and Render, or the game server will reject website logins.
+
 ## ⛰️ The Highlands (GTA-scale terrain pass)
 
 - **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (288 m), Kings Crown (243 m), Titan Peak (218 m), Razorback Ridge (207 m), Verde Highlands (205 m) and Solstice Peaks (175 m) — now shaped like real peaks: 3 radiating arête ridges each (Everest-style), fluted valleys, steep summit pyramids, and soft-terraced **cliff bands with benches and sheer drops**, plus geological strata coloring, talus fields of fallen rock at cliff bases, jagged summit crags, scree aprons, and snowfields above ~110 m that settle on the ledges
