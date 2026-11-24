@@ -17,6 +17,43 @@ export const MOUNTAINS = [
   { name: 'Verde Highlands', x: -1550, z: 1100, r: 600, h: 170 },
   { name: 'Solstice Peaks', x: 700, z: 1650, r: 520, h: 175 },
 ];
+// Rivers: descending channels carved into the terrain (only ever cut down).
+// MUST match server/map.js exactly. src/dst = channel bed elevations.
+export const RIVERS = [
+  { name: 'Apex River', w: 13, src: 42, dst: -4, pts: [[-350, -1050], [-260, -720], [-160, -380], [-240, 40], [-430, 430], [-640, 830], [-520, 1200], [-450, 1560], [-460, 1960]] },
+  { name: 'Titan River', w: 14, src: 40, dst: -4, pts: [[520, -1330], [360, -1010], [170, -790], [260, -460], [360, -160], [440, 240], [520, 590], [760, 940], [960, 1240], [1150, 1960]] },
+  { name: 'Verde Creek', w: 10, src: 30, dst: -4, pts: [[-1080, 960], [-680, 905], [-320, 990], [10, 1075], [170, 1240], [330, 1520], [300, 1960]] },
+];
+for (const rv of RIVERS) {
+  rv.segs = []; rv.total = 0;
+  let minX = 1e9, minZ = 1e9, maxX = -1e9, maxZ = -1e9;
+  for (let i = 0; i + 1 < rv.pts.length; i++) {
+    const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1];
+    const len = Math.hypot(bx - ax, bz - az);
+    rv.segs.push({ ax, az, bx, bz, len, len2: len * len, cum: rv.total });
+    rv.total += len;
+    minX = Math.min(minX, ax, bx); maxX = Math.max(maxX, ax, bx);
+    minZ = Math.min(minZ, az, bz); maxZ = Math.max(maxZ, az, bz);
+  }
+  rv.bb = [minX, minZ, maxX, maxZ];
+}
+// Nearest river field at a point: { d, bed, w, name } or null (client helper).
+export function riverAt(x, z) {
+  let best = null;
+  for (const rv of RIVERS) {
+    if (x < rv.bb[0] - rv.w || x > rv.bb[2] + rv.w || z < rv.bb[1] - rv.w || z > rv.bb[3] + rv.w) continue;
+    for (const s of rv.segs) {
+      const vx = s.bx - s.ax, vz = s.bz - s.az;
+      let t = ((x - s.ax) * vx + (z - s.az) * vz) / s.len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = s.ax + vx * t, pz = s.az + vz * t;
+      const d = Math.hypot(x - px, z - pz);
+      const bed = rv.src + (rv.dst - rv.src) * ((s.cum + t * s.len) / rv.total);
+      if (!best || d < best.d) best = { d, bed, w: rv.w, name: rv.name };
+    }
+  }
+  return best;
+}
 export function terrainHeight(x, z) {
   let h = Math.sin(x * 0.004) * 8 + Math.cos(z * 0.005) * 8 + Math.sin((x + z) * 0.0022) * 6;
   for (const hill of HILLS) {
@@ -64,6 +101,25 @@ export function terrainHeight(x, z) {
     mHeight += mMask * Math.sin(x * 0.045 + z * 0.033) * 3.5;
   }
   h += mHeight;
+  // rivers: carve the descending channel (only cuts, never raises)
+  for (const rv of RIVERS) {
+    if (x < rv.bb[0] - rv.w || x > rv.bb[2] + rv.w || z < rv.bb[1] - rv.w || z > rv.bb[3] + rv.w) continue;
+    let bestD2 = Infinity, bestBed = 0;
+    for (const s of rv.segs) {
+      if (x < Math.min(s.ax, s.bx) - rv.w || x > Math.max(s.ax, s.bx) + rv.w || z < Math.min(s.az, s.bz) - rv.w || z > Math.max(s.az, s.bz) + rv.w) continue;
+      const vx = s.bx - s.ax, vz = s.bz - s.az;
+      let t = ((x - s.ax) * vx + (z - s.az) * vz) / s.len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = s.ax + vx * t, pz = s.az + vz * t;
+      const d2 = (x - px) * (x - px) + (z - pz) * (z - pz);
+      if (d2 < bestD2) { bestD2 = d2; bestBed = rv.src + (rv.dst - rv.src) * ((s.cum + t * s.len) / rv.total); }
+    }
+    if (bestD2 < rv.w * rv.w && h > bestBed) {
+      const f = 1 - Math.sqrt(bestD2) / rv.w;
+      const ch = f * f * (3 - 2 * f);
+      h = h + (bestBed - h) * Math.pow(ch, 0.75);
+    }
+  }
   const edge = Math.max(Math.abs(x), Math.abs(z));
   if (edge > 1500) { const t = Math.min(1, (edge - 1500) / 500); h = h * (1 - t) + (-14) * t; }
   return h;
@@ -523,7 +579,7 @@ export function buildWorld(scene, data, quality = {}) {
   const colors = new Float32Array(pos.count * 3);
   const cGrass = new THREE.Color(0x54b531), cGrass2 = new THREE.Color(0xa9dc4e), cSand = new THREE.Color(0xf2dc9e),
     cRock = new THREE.Color(0x8a8578), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xf4f8ff), cDirt = new THREE.Color(0xa8834f), cScorch = new THREE.Color(0x77a83b),
-    cForest = new THREE.Color(0x2f7a2e), cScree = new THREE.Color(0xa49a86);
+    cForest = new THREE.Color(0x2f7a2e), cScree = new THREE.Color(0xa49a86), cWet = new THREE.Color(0x4f4a33);
   const tmp = new THREE.Color();
   const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
   for (let i = 0; i < pos.count; i++) {
@@ -549,6 +605,12 @@ export function buildWorld(scene, data, quality = {}) {
       if (mm > 0.12 && slope > 0.28) {
         const strata = 0.90 + 0.10 * Math.sin(h * 0.52 + n * 1.6) + 0.05 * Math.sin(h * 1.7);
         tmp.r *= strata; tmp.g *= strata; tmp.b *= strata;
+      }
+      // wet banks + dark bed inside river channels
+      const rf = riverAt(x, z);
+      if (rf && h < rf.bed + 2.6) {
+        const wet = (1 - Math.max(0, h - rf.bed) / 2.6) * Math.min(1, Math.max(0, (rf.w - rf.d) / rf.w) + 0.25);
+        tmp.lerp(cWet, Math.min(0.62, wet * 0.62));
       }
     }
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
@@ -643,6 +705,80 @@ export function buildWorld(scene, data, quality = {}) {
   glowGeo.setAttribute('position', new THREE.Float32BufferAttribute(glowPts, 3));
   const glow = new THREE.Points(glowGeo, new THREE.PointsMaterial({ map: getGlowTexture(), color: 0xffca7a, size: 7, sizeAttenuation: true, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
   scene.add(lampPole, lampHead, glow);
+
+  /* ---- town dressing: welcome signs, benches, bins, hydrants, hedges ---- */
+  {
+    const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+    const collect = (arr, x, y, z, ry, sx = 1, sy = 1, sz = 1) => {
+      _e.set(0, ry, 0); _q.setFromEuler(_e); _p.set(x, y, z); _s.set(sx, sy, sz);
+      _m4.compose(_p, _q, _s); arr.push(_m4.clone());
+    };
+    const benchM = [], binM = [], hydM = [], hedgeM = [];
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x54432c, roughness: 1 });
+    const postGeo = new THREE.CylinderGeometry(0.09, 0.11, 2.7, 6);
+    data.pois.forEach((poi) => {
+      const dl = Math.hypot(poi.x, poi.z) || 1;
+      const dirx = -poi.x / dl, dirz = -poi.z / dl; // toward map centre (road in)
+      const sx = poi.x + dirx * poi.r * 0.62, sz = poi.z + dirz * poi.r * 0.62;
+      const sign = new THREE.Group();
+      sign.position.set(sx, terrainHeight(sx, sz), sz);
+      sign.rotation.y = Math.atan2(dirx, dirz);
+      const p1 = new THREE.Mesh(postGeo, postMat); p1.position.set(-1.9, 1.35, 0);
+      const p2 = new THREE.Mesh(postGeo, postMat); p2.position.set(1.9, 1.35, 0);
+      const boardTex = canvasTex(512, 160, (c2d, w2, h2) => {
+        c2d.fillStyle = '#17325e'; c2d.fillRect(0, 0, w2, h2);
+        c2d.strokeStyle = '#ffd23f'; c2d.lineWidth = 10; c2d.strokeRect(8, 8, w2 - 16, h2 - 16);
+        c2d.font = '900 54px Segoe UI, sans-serif'; c2d.textAlign = 'center';
+        c2d.fillStyle = '#ffd23f'; c2d.fillText(poi.name.toUpperCase(), w2 / 2, 76);
+        c2d.font = '700 34px Segoe UI, sans-serif'; c2d.fillStyle = '#cfe3ff';
+        c2d.fillText('· DROPZONE ISLAND ·', w2 / 2, 124);
+      });
+      boardTex.wrapS = boardTex.wrapT = THREE.ClampToEdgeWrapping;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(5.4, 1.7, 0.16), new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.7 }));
+      board.position.y = 2.1; board.castShadow = true;
+      sign.add(p1, p2, board);
+      scene.add(sign);
+      for (let k = 0; k < 5; k++) {
+        const a = rng() * Math.PI * 2, rad = poi.r * (0.22 + rng() * 0.3);
+        const bx = poi.x + Math.cos(a) * rad, bz = poi.z + Math.sin(a) * rad;
+        collect(benchM, bx, terrainHeight(bx, bz), bz, a + Math.PI / 2);
+      }
+      for (let k = 0; k < 4; k++) {
+        const a = rng() * Math.PI * 2, rad = poi.r * (0.2 + rng() * 0.35);
+        const bx = poi.x + Math.cos(a) * rad, bz = poi.z + Math.sin(a) * rad;
+        collect(binM, bx, terrainHeight(bx, bz), bz, a);
+      }
+      for (let k = 0; k < 3; k++) {
+        const a = rng() * Math.PI * 2, rad = poi.r * (0.3 + rng() * 0.35);
+        const bx = poi.x + Math.cos(a) * rad, bz = poi.z + Math.sin(a) * rad;
+        collect(hydM, bx, terrainHeight(bx, bz), bz, a);
+      }
+      for (let k = 0; k < 12; k++) {
+        if (rng() < 0.3) continue;
+        const a = (k / 12) * Math.PI * 2 + rng() * 0.2, rad = poi.r * 0.5;
+        const bx = poi.x + Math.cos(a) * rad, bz = poi.z + Math.sin(a) * rad;
+        collect(hedgeM, bx, terrainHeight(bx, bz), bz, a + Math.PI / 2);
+      }
+    });
+    const inst = (geo, mat, mats, colorFn) => {
+      const im = new THREE.InstancedMesh(geo, mat, Math.max(1, mats.length));
+      mats.forEach((m, i) => { im.setMatrixAt(i, m); if (colorFn) im.setColorAt(i, colorFn(i)); });
+      im.count = mats.length;
+      scene.add(im);
+      return im;
+    };
+    const seatG = new THREE.BoxGeometry(1.9, 0.16, 0.55); seatG.translate(0, 0.46, 0);
+    const backG = new THREE.BoxGeometry(1.9, 0.52, 0.12); backG.translate(0, 0.78, -0.24);
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.9 });
+    inst(seatG, benchMat, benchM); inst(backG, benchMat, benchM);
+    const binG = new THREE.CylinderGeometry(0.3, 0.26, 0.8, 8); binG.translate(0, 0.4, 0);
+    inst(binG, new THREE.MeshStandardMaterial({ color: 0x2e4a34, roughness: 0.6, metalness: 0.35 }), binM);
+    const hydG = new THREE.CylinderGeometry(0.15, 0.19, 0.66, 8); hydG.translate(0, 0.33, 0);
+    inst(hydG, new THREE.MeshStandardMaterial({ color: 0xc23b2e, roughness: 0.5 }), hydM);
+    const hedgeG = new THREE.BoxGeometry(2.3, 0.7, 0.65); hedgeG.translate(0, 0.35, 0);
+    inst(hedgeG, new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), hedgeM,
+      () => tmpColor.setHSL(0.32 + rng() * 0.05, 0.42, 0.2 + rng() * 0.1));
+  }
 
   /* ---- cars / crates / barrels (instanced) ---- */
   const carSpots = [];
@@ -756,7 +892,7 @@ export function buildWorld(scene, data, quality = {}) {
       uTile: { value: grassTile },
       uSunDir: { value: new THREE.Vector3(0.5, 0.62, 0.35).normalize() },
       uPois: { value: poiVecs },
-      fogColor: { value: new THREE.Color(0x9fc6ee) },
+      fogColor: { value: new THREE.Color(0xb9cfe9) },
       fogNear: { value: 320 },
       fogFar: { value: 4200 },
     },
@@ -872,7 +1008,7 @@ export function buildWorld(scene, data, quality = {}) {
   scene.add(flowerMesh);
 
   /* ---- pebbles & ground clutter (micro-detail) ---- */
-  const pebbleCount = Math.round(1500 * vegScale);
+  const pebbleCount = Math.round(2400 * vegScale);
   const pebbleMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.34, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Math.max(1, pebbleCount));
   scatter(pebbleCount, (x, y, z) => {
     dummy.position.set(x, y + 0.03, z);
@@ -882,6 +1018,18 @@ export function buildWorld(scene, data, quality = {}) {
   }).forEach((m, i) => { pebbleMesh.setMatrixAt(i, m); pebbleMesh.setColorAt(i, tmpColor.setHSL(0.08, 0.04 + rng() * 0.08, 0.3 + rng() * 0.26)); });
   pebbleMesh.receiveShadow = true;
   scene.add(pebbleMesh);
+
+  /* ---- fallen twigs & branches (ground clutter) ---- */
+  const twigCount = Math.round(700 * vegScale);
+  const twigMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.07, 1.7, 5), new THREE.MeshStandardMaterial({ color: 0x5d4126, roughness: 1 }), Math.max(1, twigCount));
+  scatter(twigCount, (x, y, z) => {
+    dummy.position.set(x, y + 0.07, z);
+    dummy.scale.set(1, 0.7 + rng() * 0.9, 1);
+    dummy.rotation.set(Math.PI / 2 + (rng() - 0.5) * 0.25, 0, rng() * Math.PI);
+    dummy.updateMatrix();
+    return dummy.matrix.clone();
+  }).forEach((m, i) => twigMesh.setMatrixAt(i, m));
+  scene.add(twigMesh);
 
   /* ---- dense decorative pine forests + cliff boulders (visual density) ---- */
   const roadSegs = [];
@@ -1012,6 +1160,54 @@ export function buildWorld(scene, data, quality = {}) {
   });
   scene.add(cragMesh);
 
+  /* ---- river water ribbons (flow-animated) ---- */
+  const riverFlowTexs = [];
+  function buildRiver(rv) {
+    const pts = [];
+    for (const s of rv.segs) {
+      const n = Math.max(2, Math.round(s.len / 14));
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        pts.push({ x: s.ax + (s.bx - s.ax) * t, z: s.az + (s.bz - s.az) * t, bed: rv.src + (rv.dst - rv.src) * ((s.cum + t * s.len) / rv.total) });
+      }
+    }
+    const lastPt = rv.pts[rv.pts.length - 1];
+    pts.push({ x: lastPt[0], z: lastPt[1], bed: rv.dst });
+    // water level: sits in the carved channel, clamped to terrain, then smoothed
+    let ys = pts.map(p => Math.min(p.bed + 1.05, terrainHeight(p.x, p.z) + 0.4));
+    for (let k = 0; k < 2; k++) ys = ys.map((y, i) => (ys[Math.max(0, i - 1)] + y * 2 + ys[Math.min(ys.length - 1, i + 1)]) / 4);
+    const posArr = [], uvArr = [], idxArr = [];
+    let dist = 0;
+    pts.forEach((p, i) => {
+      const q = pts[Math.min(pts.length - 1, i + 1)], q0 = pts[Math.max(0, i - 1)];
+      let dx = q.x - q0.x, dz = q.z - q0.z;
+      const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+      if (i > 0) dist += Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z);
+      const hw = rv.w * 0.44, y = ys[i];
+      posArr.push(p.x - dz * hw, y, p.z + dx * hw, p.x + dz * hw, y, p.z - dx * hw);
+      uvArr.push(0, dist / 22, 1, dist / 22);
+      if (i > 0) { const a = (i - 1) * 2; idxArr.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvArr, 2));
+    g.setIndex(idxArr);
+    g.computeVertexNormals();
+    const tex = canvasTex(64, 256, (c2d, w2, h2) => {
+      c2d.fillStyle = '#a8cbee'; c2d.fillRect(0, 0, w2, h2);
+      const r = mulberry32(7);
+      for (let i = 0; i < 42; i++) {
+        c2d.fillStyle = `rgba(255,255,255,${0.10 + r() * 0.22})`;
+        c2d.fillRect(r() * w2, r() * h2, 1.5 + r() * 2.5, 18 + r() * 60);
+      }
+    });
+    tex.repeat.set(1, 1);
+    riverFlowTexs.push(tex);
+    const m = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ map: tex, color: 0x6ea3d8, transparent: true, opacity: 0.82, shininess: 180, specular: 0xcfe6ff }));
+    scene.add(m);
+  }
+  RIVERS.forEach(buildRiver);
+
   /* ---- GTA-scale scenery: layered backdrops, waterfalls, summits, birds ---- */
   createMountainBackdrop(scene);
   const summit = createSummitProps(scene, colliders);
@@ -1083,6 +1279,7 @@ export function buildWorld(scene, data, quality = {}) {
   let cloudT = 0;
   function updateWorld(t, dt, cameraPos) {
     grassTime.value = t;
+    for (const tx of riverFlowTexs) tx.offset.y = -t * 0.45;
     waterfallTime.value = t;
     if (cameraPos) grassCam.value.copy(cameraPos);
     cloudT += dt * 2.2;

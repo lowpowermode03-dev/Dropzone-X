@@ -1,5 +1,4 @@
-# FortWorld
-# FortWorld
+# Dropzone X
 
 A Fortnite-style **browser battle royale**: drop from the Battle Bus onto a huge island, loot weapons, harvest materials, build cover, survive the storm — last one standing gets the Victory Royale.
 
@@ -22,7 +21,7 @@ Create an account, sign in as a guest, or log back in anytime — stats, level, 
 - **~5,000 decorative pines** thickening on mountain slopes (above the harvestable treeline rules), 1,000+ cliff boulders on steep faces
 - **Two animated waterfalls** that carve their own downhill path from the highlands with scrolling foam shaders and plunge-pool glow
 - **Summit landmarks**: an observatory on Mount Apex and a radio tower with blinking aviation beacon on Titan Peak (both solid), mountain name labels in-world, peak markers on the minimap, and GTA-style **location banners** ("MOUNT APEX — THE HIGHLANDS · ELEV 214M") as you explore
-- The Battle Bus now cruises at 320 m to clear the peaks — sniper nests on the summits are very real
+- The Battle Bus now cruises at 345 m to clear the peaks — sniper nests on the summits are very real
 
 ## 🎬 AAA Presentation Pass
 
@@ -69,6 +68,14 @@ Full touch support, auto-detected (also switchable in Settings):
 - Shields, medkits & bandages, 4 ammo types, 5-slot inventory
 - Harvest wood/stone/metal and **build** walls, floors & ramps (Q / F / X)
 - Minimap with storm circle & players, compass, damage vignette, hitmarkers
+
+## 🏙️ DROPZONE X — Towns, Rivers & Landing Page
+- **The game is now Dropzone X**: professional landing page (hero key art, live 3D island behind it, stats strip) and **Discord community: https://discord.gg/rHvJcQAeAN** (nav, lobby, end screen, footer)
+- **Three flowing rivers** carved into the shared terrain (Apex River, Titan River, Verde Creek) with animated water ribbons, wet banks, and full swimming; river-name location banners
+- **Towns feel alive**: denser building layouts, wooden welcome signs with every town's name, benches, bins, hydrants and plaza hedges
+- **Atmosphere**: matched sky/fog horizon color (0xb9cfe9, 260–3500 m) for true aerial perspective; **texel-snapped shadow follow** (no more shadow swimming) with quality-scaled shadow frustums
+- **More clutter**: 2,400+ pebbles, fallen twigs & branches, plus everything from the detail pass
+- **Real GLB models**: the pickaxe is now a true binary glTF model (`public/models/pickaxe.glb` — curved steel blade, tapered wooden handle, leather grip wraps, PBR materials) loaded by a built-in dependency-free GLB loader (`public/js/gltf.js`), with the old procedural mesh kept only as an offline fallback
 
 ## 🔄 REBORN — Third-Person Revamp
 - **Third-person over-shoulder camera** (toggle `V` for first-person): you actually see your skin, third-person shooting originates from your character

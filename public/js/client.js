@@ -1,6 +1,7 @@
 // FortWorld client: auth, lobby, shop, FPS gameplay, building, HUD.
 import * as THREE from 'three';
-import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS } from './world.js';
+import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS, RIVERS, riverAt } from './world.js';
+import { loadGLB } from './gltf.js';
 
 const $ = (id) => document.getElementById(id);
 const RARITY_COLORS = ['#b1b1b1', '#60aa3c', '#4d8fd1', '#b04dd1', '#e8a33d'];
@@ -751,8 +752,10 @@ function startMatch(data) {
     sun.position.set(400, 700, 250); sun.castShadow = true;
     const q = qualityPreset();
     sun.shadow.mapSize.set(q.shadow, q.shadow);
-    sun.shadow.camera.left = -140; sun.shadow.camera.right = 140; sun.shadow.camera.top = 140; sun.shadow.camera.bottom = -140;
+    const sBox = q.shadow >= 2048 ? 150 : q.shadow >= 1024 ? 115 : 85; // tighter box on small maps = sharper shadows
+    sun.shadow.camera.left = -sBox; sun.shadow.camera.right = sBox; sun.shadow.camera.top = sBox; sun.shadow.camera.bottom = -sBox;
     sun.shadow.camera.far = 1900; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.6; sun.name = 'sun';
+    sun.shadow.camera.updateProjectionMatrix();
     scene.add(sun); scene.add(sun.target);
     // sun lens-flare sprite (cheap cinematic glow, positioned per-frame)
     const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xffe9b0, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false }));
@@ -809,12 +812,28 @@ function makeBus() {
   return g;
 }
 
+// Real GLB pickaxe (public/models/pickaxe.glb) — replaces the old stick-and-box placeholder.
+// Loads async during menus; procedural fallback below stays if the fetch ever fails.
+let pickaxeGLB = null;
+loadGLB('/models/pickaxe.glb').then((m) => {
+  pickaxeGLB = m;
+  try { // swap any pickaxe already in hand for the real model
+    if (typeof G !== 'undefined' && G.vmWeapon === 'pickaxe') buildViewmodel('pickaxe');
+    if (typeof G !== 'undefined' && G.selfMesh && slotWeaponId() === 'pickaxe') updateSelfWeapon('pickaxe');
+  } catch (e) { /* next weapon rebuild picks it up anyway */ }
+}).catch(() => { /* offline / blocked: keep the fallback */ });
+
 function makeGunModel(weaponId) {
   const grp = new THREE.Group();
   const dark = new THREE.MeshStandardMaterial({ color: 0x23242e, roughness: 0.38, metalness: 0.65 });
   const accent = new THREE.MeshStandardMaterial({ color: 0x596273, roughness: 0.3, metalness: 0.7 });
   const add = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (rx) m.rotation.x = rx; m.castShadow = true; grp.add(m); return m; };
   if (weaponId === 'pickaxe') {
+    if (pickaxeGLB) {
+      const model = pickaxeGLB.clone(true);
+      model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      return model;
+    }
     add(new THREE.CylinderGeometry(0.045, 0.055, 0.95), new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.9 }), 0, -0.15, 0.1, 0.5);
     add(new THREE.BoxGeometry(0.85, 0.11, 0.11), accent, 0, 0.22, -0.05);
     return grp;
@@ -947,7 +966,7 @@ function buildViewmodel(weaponId) {
   // rarity accent stripe
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.035, 0.5), new THREE.MeshStandardMaterial({ color: new THREE.Color(RARITY_COLORS[rarity]), emissive: new THREE.Color(RARITY_COLORS[rarity]), emissiveIntensity: 0.7, roughness: 0.4 }));
   stripe.position.set(0, 0.12, 0.1);
-  grp.add(stripe);
+  if (weaponId !== 'pickaxe') grp.add(stripe); // GLB pickaxe has its own accent band
   // gloved hands
   const glove = new THREE.MeshStandardMaterial({ color: 0x333a4a, roughness: 0.85 });
   const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.16), glove); h1.position.set(0.02, -0.16, 0.16);
@@ -1058,7 +1077,14 @@ function onSnapshot(snap) {
       $('shieldBar').style.width = Math.max(0, p.sh) + '%'; $('shieldText').textContent = Math.max(0, p.sh);
       if (G.mode === 'bus' && !p.bus) G.mode = 'skydiving';
       if (p.bus) { G.pos.set(p.x, p.y, p.z); }
-      if (sun) { sun.position.set(G.pos.x + 400, G.pos.y + 700, G.pos.z + 250); sun.target.position.copy(G.pos); }
+      if (sun) {
+        // texel-snapped follow: shadows stay rock-steady instead of swimming
+        const snapU = 1.0;
+        const sx = Math.round(G.pos.x / snapU) * snapU, sz = Math.round(G.pos.z / snapU) * snapU;
+        sun.position.set(sx + 400, G.pos.y + 700, sz + 250);
+        sun.target.position.set(sx, G.pos.y, sz);
+        sun.target.updateMatrixWorld();
+      }
       continue;
     }
     let r = G.remotes.get(p.id);
@@ -1472,11 +1498,15 @@ function checkLocation(now) {
   if (!G.active || !G.data || G.mode === 'bus') return;
   if (now - (G.lastLocCheck || 0) < 700) return;
   G.lastLocCheck = now;
-  let place = null, sub = 'FORTWORLD ISLAND';
+  let place = null, sub = 'DROPZONE ISLAND';
   let bestScore = 1e9;
   for (const p of G.data.pois) {
     const d = Math.hypot(G.pos.x - p.x, G.pos.z - p.z);
-    if (d < p.r && d / p.r < bestScore) { bestScore = d / p.r; place = p.name; sub = 'FORTWORLD ISLAND'; }
+    if (d < p.r && d / p.r < bestScore) { bestScore = d / p.r; place = p.name; sub = 'DROPZONE ISLAND'; }
+  }
+  if (!place) {
+    const rf = riverAt(G.pos.x, G.pos.z);
+    if (rf && rf.d < 30) { place = rf.name; sub = 'DROPZONE ISLAND'; }
   }
   if (G.pos.y > 42) {
     for (const m of MOUNTAINS) {
@@ -1560,7 +1590,10 @@ function loop(now) {
     const wishLen = Math.min(1.5, move.length());
     const wishDir = wishLen > 0.001 ? new THREE.Vector2(move.x / wishLen, move.z / wishLen) : new THREE.Vector2();
     const terrainG = groundAt(G.pos.x, G.pos.z);
-    G.swimming = terrainG < WATER_Y - 0.9 && G.pos.y <= WATER_Y + 0.05;
+    const rvHere = riverAt(G.pos.x, G.pos.z);
+    const inRiver = !!(rvHere && rvHere.d < rvHere.w * 0.85 && terrainG <= rvHere.bed + 1.35);
+    G.swimSurf = inRiver ? rvHere.bed + 1.1 : WATER_Y;
+    G.swimming = (terrainG < WATER_Y - 0.9 && G.pos.y <= WATER_Y + 0.05) || (inRiver && G.pos.y <= rvHere.bed + 1.2);
     // SLIDE: tap crouch at speed — dive into a momentum slide
     let sliding = now < G.slideUntil;
     if (!sliding && crouchInput && !G.crouchHeld && G.onGround && !G.swimming && now > G.slideReady) {
@@ -1614,7 +1647,7 @@ function loop(now) {
     }
     G.pos.x += G.hVel.x * dt;
     G.pos.z += G.hVel.y * dt;
-    const ground = Math.max(terrainG, WATER_Y - 0.4);
+    const ground = Math.max(terrainG, (G.swimSurf !== undefined ? G.swimSurf : WATER_Y) - 0.45);
     const wasGround = G.onGround;
     if (G.swimming) {
       G.velY = THREE.MathUtils.clamp((ground - G.pos.y) * 5, -2.6, 2.6);
