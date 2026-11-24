@@ -1,7 +1,7 @@
 {
-  "name": "fortworld",
+  "name": "dropzone-x",
   "version": "1.0.0",
-  "description": "FortWorld - Fortnite-like browser battle royale with shaders, huge map, multiplayer and accounts",
+  "description": "Dropzone X - free browser battle royale: 4km island, Everest peaks, rivers, building, real multiplayer",
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {

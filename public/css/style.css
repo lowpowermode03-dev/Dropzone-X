@@ -242,3 +242,37 @@ canvas.game{display:block;touch-action:none}
   .touch-cluster{bottom:calc(96px + var(--safe-b));transform:scale(.92);transform-origin:bottom right}
   body.touch .hud-bottom-left{bottom:calc(168px + var(--safe-b))}
 }
+
+/* ============ DROPZONE X landing page ============ */
+#authScreen{background:linear-gradient(180deg,rgba(8,10,28,.60),rgba(8,10,28,.42) 45%,rgba(8,10,28,.80)),url('/img/hero.jpg') center/cover no-repeat;flex-direction:column;align-items:stretch;justify-content:flex-start}
+.land-nav{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:14px 26px;background:linear-gradient(180deg,rgba(10,10,30,.72),rgba(10,10,30,0))}
+.land-nav-links{display:flex;gap:8px;align-items:center}
+.nav-link{color:#dbe9ff;text-decoration:none;font-weight:700;font-size:14px;padding:9px 12px;border-radius:10px}
+.nav-link:hover{background:#ffffff1c}
+.discord-btn{background:#5865F2;color:#fff;font-weight:800;padding:9px 16px;border-radius:10px;box-shadow:0 6px 18px #5865F255}
+.discord-btn:hover{background:#4752c4}
+a.discord-btn{text-decoration:none}
+.discord-btn.sm{padding:7px 12px;font-size:13px}
+.land-hero{flex:1;display:grid;grid-template-columns:1.15fr .85fr;gap:34px;align-items:center;width:100%;max-width:1240px;margin:0 auto;padding:26px 26px 8px}
+.hero-badge{display:inline-block;background:#ffd23f;color:#231400;font-weight:900;font-size:12.5px;letter-spacing:1px;padding:7px 14px;border-radius:99px;box-shadow:0 6px 18px #0006}
+.hero-title{font-size:clamp(52px,8.5vw,96px);line-height:.95;font-weight:900;letter-spacing:1px;margin:16px 0 12px;color:#fff;text-shadow:0 6px 0 rgba(0,0,0,.35),0 0 44px rgba(155,93,229,.55)}
+.hero-title span{color:#ffd23f}
+.hero-sub{font-size:17.5px;line-height:1.55;color:#e9f1ff;max-width:560px;text-shadow:0 2px 10px #000b}
+.hero-ctas{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:22px 0}
+.hero-ctas .btn.play{font-size:19px;padding:15px 34px}
+.btn.discord-big{background:#5865F2;color:#fff;font-weight:900;padding:15px 26px;border-radius:14px;box-shadow:0 10px 26px #5865F266;font-size:16px}
+.btn.discord-big:hover{background:#4752c4}
+.hero-stats{display:flex;gap:28px;flex-wrap:wrap;margin:4px 0}
+.hero-stats div{display:flex;flex-direction:column}
+.hero-stats b{font-size:26px;color:#ffd76a;text-shadow:0 2px 8px #0008}
+.hero-stats span{font-size:11.5px;color:#bcd2f5;letter-spacing:1.2px;text-transform:uppercase}
+.hero-copy .features{justify-content:flex-start;margin-top:18px}
+#authCard{justify-self:end;width:min(390px,94vw)}
+.land-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;width:100%;max-width:1240px;margin:0 auto;padding:18px 26px 24px;color:#a9c0e2;font-size:12.5px}
+.land-foot a{color:#8ea2ff;font-weight:700;text-decoration:none}
+@media(max-width:900px){
+  .land-hero{grid-template-columns:1fr;padding-top:14px}
+  #authCard{justify-self:center}
+  .land-nav{padding:12px 16px}
+  .nav-link{display:none}
+}

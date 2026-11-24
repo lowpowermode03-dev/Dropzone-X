@@ -7,18 +7,43 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>FortWorld — Browser Battle Royale</title>
+<title>Dropzone X — Free Browser Battle Royale</title>
 <link rel="stylesheet" href="/css/style.css">
 <script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
 </head>
 <body>
 
-<!-- ============ AUTH ============ -->
+<!-- ============ LANDING / AUTH ============ -->
 <div id="authScreen" class="screen">
-  <div class="auth-wrap">
-    <div class="logo">FORT<span>WORLD</span></div>
-    <div class="tagline">100% Browser Battle Royale · Huge Island · Build · Loot · Last One Standing Wins</div>
-    <div class="auth-card">
+  <nav class="land-nav">
+    <div class="logo small">DROPZONE<span>X</span></div>
+    <div class="land-nav-links">
+      <a class="nav-link" href="#authCard">Play</a>
+      <a class="nav-link" href="#landFeatures">Features</a>
+      <a class="discord-btn" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">💬 Discord</a>
+    </div>
+  </nav>
+  <div class="land-hero">
+    <div class="hero-copy">
+      <div class="hero-badge">🪂 SEASON 1 · 24-PLAYER BATTLE ROYALE · 100% FREE</div>
+      <h1 class="hero-title">DROPZONE <span>X</span></h1>
+      <p class="hero-sub">Drop from the Battle Bus onto a 4 km² island of Everest-sized peaks, winding rivers and neon-lit towns. Loot up, build cover, surf the storm — and be the last one standing.</p>
+      <div class="hero-ctas">
+        <a class="btn play" href="#authCard">▶ PLAY FREE NOW</a>
+        <a class="btn discord-big" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">💬 Join our Discord</a>
+      </div>
+      <div class="hero-stats">
+        <div><b>4 km²</b><span>Island</span></div>
+        <div><b>288 m</b><span>Tallest peak</span></div>
+        <div><b>10</b><span>Towns &amp; POIs</span></div>
+        <div><b>24</b><span>Fighters / match</span></div>
+      </div>
+      <div class="features" id="landFeatures">
+        <div>⛰️ Everest-style peaks</div><div>🏞️ Flowing rivers</div><div>🌩️ Shrinking storm</div><div>🔨 Build &amp; harvest</div>
+        <div>🔫 6 weapons · 5 rarities</div><div>🤖 Bots fill every match</div><div>👥 Real multiplayer</div><div>📱 Mobile controls</div><div>🎬 Bloom &amp; god rays</div><div>🌾 Living grass meadows</div>
+      </div>
+    </div>
+    <div class="auth-card" id="authCard">
       <div class="auth-tabs">
         <button id="tabLogin" class="tab active">Log In</button>
         <button id="tabRegister" class="tab">Sign Up</button>
@@ -39,21 +64,22 @@
       <button id="btnGuest" class="btn ghost big">▶ PLAY AS GUEST (instant)</button>
       <p class="tiny">Accounts save your stats, level, V-Bucks &amp; skins across matches. Works on mobile too — touch controls included.</p>
     </div>
-    <div class="features">
-      <div>🗺️ 4 km² island · 10 POIs</div><div>⛰️ 6 mountain massifs · 290 m peaks</div><div>🌩️ Shrinking storm</div><div>🔨 Build &amp; harvest</div>
-      <div>🔫 6 weapons · 5 rarities</div><div>🤖 Bots fill every match</div><div>👥 Real multiplayer</div><div>📱 Mobile controls</div><div>🎬 Cinematic graphics</div><div>🌲 Pine forests · waterfalls</div>
-    </div>
   </div>
+  <footer class="land-foot">
+    <span>DROPZONE X — a free fan-made browser game. Not affiliated with Epic Games.</span>
+    <a href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener">💬 discord.gg/rHvJcQAeAN</a>
+  </footer>
 </div>
 
 <!-- ============ LOBBY ============ -->
 <div id="lobbyScreen" class="screen hidden">
   <header class="lobby-top">
-    <div class="logo small">FORT<span>WORLD</span></div>
+    <div class="logo small">DROPZONE<span>X</span></div>
     <div class="player-chip">
       <div class="avatar" id="lobbyAvatar">?</div>
       <div><div id="lobbyName">Player</div><div id="lobbyLevel" class="tiny">Level 1</div></div>
       <div class="vbucks">🪙 <span id="lobbyVbucks">0</span></div>
+      <a class="btn discord-btn sm" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener" style="text-decoration:none">💬 Discord</a>
       <button id="btnSettingsLobby" class="btn ghost sm">⚙️ Settings</button>
       <button id="btnLogout" class="btn ghost sm">Log out</button>
     </div>
@@ -70,7 +96,7 @@
       <div class="hero-card">
         <div class="hero-badge">CHAPTER 2 · REBORN — THIRD-PERSON UPDATE</div>
         <h1>SOLO BATTLE ROYALE</h1>
-        <p>Drop from the Battle Bus, loot up, build cover and be the last one standing on FortWorld Island.</p>
+        <p>Drop from the Battle Bus, loot up, build cover and be the last one standing on Dropzone Island.</p>
         <button id="btnPlay" class="btn play">▶ &nbsp;PLAY</button>
         <div id="queueBox" class="hidden">
           <div class="queue-anim">Finding match<span class="dots"></span></div>
@@ -242,11 +268,12 @@
     <p id="endSub">You were eliminated</p>
     <div id="endStats" class="stats-list"></div>
     <button id="btnBackLobby" class="btn primary big">BACK TO LOBBY</button>
+    <a class="btn discord-big" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener" style="text-decoration:none;display:block;margin-top:10px">💬 Brag about it on Discord</a>
   </div>
 </div>
 
 <div id="loadingScreen" class="screen hidden">
-  <div class="loading-wrap"><div class="logo">FORT<span>WORLD</span></div><div class="loading-bar"><div id="loadingFill"></div></div><p id="loadingText">Building island…</p><p id="loadingTip" class="tiny">Tip: Legendary (orange) weapons hit up to 38% harder.</p></div>
+  <div class="loading-wrap"><div class="logo">DROPZONE<span>X</span></div><div class="loading-bar"><div id="loadingFill"></div></div><p id="loadingText">Building island…</p><p id="loadingTip" class="tiny">Tip: Legendary (orange) weapons hit up to 38% harder.</p></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>

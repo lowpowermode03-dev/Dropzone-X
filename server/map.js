@@ -84,6 +84,25 @@ function terrainHeight(x, z) {
     mHeight += mMask * Math.sin(x * 0.045 + z * 0.033) * 3.5;
   }
   h += mHeight;
+  // rivers: carve the descending channel (only cuts, never raises)
+  for (const rv of RIVERS) {
+    if (x < rv.bb[0] - rv.w || x > rv.bb[2] + rv.w || z < rv.bb[1] - rv.w || z > rv.bb[3] + rv.w) continue;
+    let bestD2 = Infinity, bestBed = 0;
+    for (const s of rv.segs) {
+      if (x < Math.min(s.ax, s.bx) - rv.w || x > Math.max(s.ax, s.bx) + rv.w || z < Math.min(s.az, s.bz) - rv.w || z > Math.max(s.az, s.bz) + rv.w) continue;
+      const vx = s.bx - s.ax, vz = s.bz - s.az;
+      let t = ((x - s.ax) * vx + (z - s.az) * vz) / s.len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = s.ax + vx * t, pz = s.az + vz * t;
+      const d2 = (x - px) * (x - px) + (z - pz) * (z - pz);
+      if (d2 < bestD2) { bestD2 = d2; bestBed = rv.src + (rv.dst - rv.src) * ((s.cum + t * s.len) / rv.total); }
+    }
+    if (bestD2 < rv.w * rv.w && h > bestBed) {
+      const f = 1 - Math.sqrt(bestD2) / rv.w;
+      const ch = f * f * (3 - 2 * f);
+      h = h + (bestBed - h) * Math.pow(ch, 0.75);
+    }
+  }
   // island falloff to water at edges
   const edge = Math.max(Math.abs(x), Math.abs(z));
   if (edge > 1500) {
@@ -93,8 +112,29 @@ function terrainHeight(x, z) {
   return h;
 }
 
+// Rivers: descending channels carved into the terrain (only ever cut down).
+// MUST match client world.js exactly. src/dst = channel bed elevations.
+const RIVERS = [
+  { name: 'Apex River', w: 13, src: 42, dst: -4, pts: [[-350, -1050], [-260, -720], [-160, -380], [-240, 40], [-430, 430], [-640, 830], [-520, 1200], [-450, 1560], [-460, 1960]] },
+  { name: 'Titan River', w: 14, src: 40, dst: -4, pts: [[520, -1330], [360, -1010], [170, -790], [260, -460], [360, -160], [440, 240], [520, 590], [760, 940], [960, 1240], [1150, 1960]] },
+  { name: 'Verde Creek', w: 10, src: 30, dst: -4, pts: [[-1080, 960], [-680, 905], [-320, 990], [10, 1075], [170, 1240], [330, 1520], [300, 1960]] },
+];
+for (const rv of RIVERS) {
+  rv.segs = []; rv.total = 0;
+  let minX = 1e9, minZ = 1e9, maxX = -1e9, maxZ = -1e9;
+  for (let i = 0; i + 1 < rv.pts.length; i++) {
+    const [ax, az] = rv.pts[i], [bx, bz] = rv.pts[i + 1];
+    const len = Math.hypot(bx - ax, bz - az);
+    rv.segs.push({ ax, az, bx, bz, len, len2: len * len, cum: rv.total });
+    rv.total += len;
+    minX = Math.min(minX, ax, bx); maxX = Math.max(maxX, ax, bx);
+    minZ = Math.min(minZ, az, bz); maxZ = Math.max(maxZ, az, bz);
+  }
+  rv.bb = [minX, minZ, maxX, maxZ];
+}
+
 const POIS = [
-  { name: 'FortWorld City', x: 0, z: -200, r: 260, color: 0x8a8f98 },
+  { name: 'Dropzone City', x: 0, z: -200, r: 260, color: 0x8a8f98 },
   { name: 'Salty Springs', x: -800, z: -900, r: 180, color: 0xd9c27a },
   { name: 'Greasy Grove', x: 1000, z: -700, r: 170, color: 0x7fb069 },
   { name: 'Retail Row', x: 600, z: 400, r: 200, color: 0xe07a5f },
@@ -111,7 +151,7 @@ function genBuildings() {
   const rng = mulberry32(1337);
   const buildings = [];
   for (const poi of POIS) {
-    const n = 6 + Math.floor(rng() * 5);
+    const n = 8 + Math.floor(rng() * 6);
     for (let i = 0; i < n; i++) {
       const a = rng() * Math.PI * 2;
       const d = rng() * poi.r * 0.7;
@@ -173,4 +213,4 @@ function genLootSpawns() {
 }
 const LOOT_SPAWNS = genLootSpawns();
 
-module.exports = { MAP_SIZE, HALF, terrainHeight, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS };
+module.exports = { MAP_SIZE, HALF, terrainHeight, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS, RIVERS };
