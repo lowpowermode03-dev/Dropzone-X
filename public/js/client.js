@@ -326,6 +326,7 @@ $('btnDaily').onclick = async () => {
     currentUser = r.user;
     $('lobbyVbucks').textContent = r.user.vbucks;
     showVbToast(r.reward.vbucks);
+    playTone(880, 0.1, 0.06, 'triangle'); setTimeout(() => playTone(1318, 0.14, 0.06, 'triangle'), 90);
     refreshLobby();
   } catch (e) { $('dailyTimer').textContent = e.message; $('btnDaily').disabled = false; }
 };
@@ -440,6 +441,16 @@ function connectSocket() {
     G.camShake = Math.min(0.5, G.camShake + 0.16);
     playNoise(0.05, 500, 0.08);
     if (d) document.body.classList.toggle('lowhp', d.health <= 30 && d.health > 0);
+    // directional hit indicator: red arc toward whoever shot you
+    if (d && d.ax !== null && d.ax !== undefined && G.pos) {
+      const phi = Math.atan2(-Math.sin(G.yaw), -Math.cos(G.yaw));
+      const beta = Math.atan2(d.ax - G.pos.x, d.az - G.pos.z);
+      const el = $('dmgDir');
+      el.style.transform = `translate(-50%,-50%) rotate(${(phi - beta) * 180 / Math.PI}deg)`;
+      el.style.opacity = 1;
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.style.opacity = 0, 650);
+    }
   });
   socket.on('killfeed', (k) => addKillfeed(k));
   socket.on('youGotKill', (k) => {
@@ -1285,6 +1296,7 @@ function onSnapshot(snap) {
   G.storm = snap.storm;
   $('aliveInfo').textContent = '👥 ' + snap.aliveCount;
   $('stormInfo').textContent = snap.storm.state === 'shrinking' ? `🌩️ Storm shrinking! (${snap.storm.dps}/s)` : snap.phase === 'bus' ? '🚌 Battle Bus incoming…' : `⛈️ Storm shrinks in ${snap.storm.timer}s`;
+  $('stormInfo').style.color = snap.storm.state === 'shrinking' ? '#ff8080' : (snap.storm.timer <= 10 && snap.phase !== 'bus' ? '#ffc4c4' : '');
   const sun = G.scene.getObjectByName('sun');
   // bus
   if (G.busGroup) { G.busGroup.position.set(snap.bus.x, snap.bus.y + 6, snap.bus.z); G.busGroup.visible = snap.phase === 'bus'; }
@@ -1638,6 +1650,7 @@ function initSettingsUI() {
   $('btnSettingsLobby').addEventListener('click', openSettings);
   // REBORN lobby tabs
   document.querySelectorAll('.ltab').forEach(tab => {
+    tab.addEventListener('click', () => { const ls = $('lobbyScreen'); if (ls) ls.scrollTo({ top: 0, behavior: 'smooth' }); });
     tab.addEventListener('click', () => {
       document.querySelectorAll('.ltab').forEach(x => x.classList.remove('active'));
       tab.classList.add('active');
