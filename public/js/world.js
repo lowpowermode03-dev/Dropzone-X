@@ -3,9 +3,9 @@
 import * as THREE from 'three';
 import { MAPS_DATA } from './maps_data.js';
 
-// Imported maps (AIX-32/UNMANNED + AIX-32/nuclearism), baked by
-// tools/bake_maps.mjs. MUST match server/map.js exactly.
-const IMPORTED_ZONES = MAPS_DATA.zones;
+// Expansion zones baked by tools/bake_maps.mjs.
+// MUST match server/map.js exactly.
+const EXPANSION_ZONES = MAPS_DATA.zones;
 
 // Must match server/map.js exactly
 const HILLS = [
@@ -129,10 +129,10 @@ function terrainNative(x, z) {
   if (edge > 1500) { const t = Math.min(1, (edge - 1500) / 500); h = h * (1 - t) + (-14) * t; }
   return h;
 }
-// Imported-zone terrain stamps. MUST match server/map.js exactly.
+// Expansion-zone terrain stamps. MUST match server/map.js exactly.
 export function terrainHeight(x, z) {
   let h = terrainNative(x, z);
-  for (const zn of IMPORTED_ZONES) {
+  for (const zn of EXPANSION_ZONES) {
     const dx = x - zn.x, dz = z - zn.z;
     const R = zn.half + zn.blend;
     const d2 = dx * dx + dz * dz;
@@ -154,7 +154,7 @@ export function terrainHeight(x, z) {
   }
   return h;
 }
-for (const zn of IMPORTED_ZONES) zn._b = terrainNative(zn.x, zn.z);
+for (const zn of EXPANSION_ZONES) zn._b = terrainNative(zn.x, zn.z);
 // 0..1 mountain influence at a point (for colouring / scatter decisions)
 export function mountainMask(x, z) {
   let m = 0;

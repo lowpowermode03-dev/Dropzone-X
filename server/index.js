@@ -170,7 +170,7 @@ if (require.main === module) {
   dbReady.then(() => {
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🎮 Dropzone X server running on http://0.0.0.0:${PORT}`);
-      console.log(`   Map: 4000x4000 | POIs: ${POIS.length} (10 native + 6 imported) | Bots fill matches to 24 fighters`);
+      console.log(`   Map: 4000x4000 | POIs: ${POIS.length} (10 native + 6 expansion) | Bots fill matches to 24 fighters`);
       console.log(`   Database: ${db.isSupabase() ? '☁️  Supabase (Postgres)' : '💾 Local JSON (data/)'}\n`);
     });
   });

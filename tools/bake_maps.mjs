@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Dropzone X — imported-maps bake tool.
+// Dropzone X — expansion-maps bake tool.
 //
-// Bakes terrain + props from two of AIX-32's projects into Dropzone X zones:
-//   • UNMANNED  (https://github.com/AIX-32/UNMANNED)  — authored maps/*.umm JSON
-//   • nuclearism (https://github.com/AIX-32/nuclearism) — seeded Perlin +
-//     hydraulic-erosion terrain generator (tools/nuc_terrain.mjs, vendored)
+// Bakes terrain + props from expansion map sources into Dropzone X zones:
+//   • authored .umm JSON maps (terrain heightfield + props + blocks)
+//   • a seeded Perlin + hydraulic-erosion terrain generator
+//     (tools/nuc_terrain.mjs) for the Ashen Highlands
 //
 // Each source landmass becomes a 480 m "zone" stamped into Dropzone X's
 // 4000×4000 island rim. Heights are baked RELATIVE; at runtime each zone is
@@ -13,7 +13,6 @@
 //
 // Usage:
 //   node tools/bake_maps.mjs <dir-with-.umm-files>
-//     (clone https://github.com/AIX-32/UNMANNED and pass its maps/ dir)
 //
 // Outputs (generated — do not hand-edit):
 //   server/maps_data.js    (CommonJS)
@@ -31,12 +30,12 @@ const HALF = DISPLAY / 2;
 
 // Zone placement on the island rim (centres chosen clear of POIs/mountains).
 const ZONES = [
-  { id: 'nuclearism', name: 'Nuclearism Highlands', src: 'nuclearism', x: 1680, z: -1680, color: 0xa9552e, loot: 14 },
-  { id: 'arena', file: 'Arena.umm', name: 'Arena', src: 'unmanned', x: 1780, z: -820, color: 0xb8bfc9, amp: 1.0, loot: 8 },
-  { id: 'silencevale', file: 'SilenceVale.umm', name: 'Silence Vale', src: 'unmanned', x: 1720, z: 1720, color: 0x8fa382, amp: 1.35, loot: 8 },
-  { id: 'gulled', file: 'Gulled.umm', name: 'Gulled', src: 'unmanned', x: -880, z: 1740, color: 0xd9a066, amp: 1.35, loot: 8 },
-  { id: 'loner', file: 'Loner.umm', name: 'Loner', src: 'unmanned', x: -1780, z: 1780, color: 0x5a6b8a, amp: 1.3, loot: 8 },
-  { id: 'drift', file: 'Drift.umm', name: 'Drift', src: 'unmanned', x: -1780, z: -620, color: 0xa8b8c8, amp: 1.35, loot: 8 },
+  { id: 'ashen', name: 'Ashen Highlands', gen: true, x: 1680, z: -1680, color: 0xa9552e, loot: 14 },
+  { id: 'arena', file: 'Arena.umm', name: 'Arena', x: 1780, z: -820, color: 0xb8bfc9, amp: 1.0, loot: 8 },
+  { id: 'silencevale', file: 'SilenceVale.umm', name: 'Silence Vale', x: 1720, z: 1720, color: 0x8fa382, amp: 1.35, loot: 8 },
+  { id: 'gulled', file: 'Gulled.umm', name: 'Gulled', x: -880, z: 1740, color: 0xd9a066, amp: 1.35, loot: 8 },
+  { id: 'loner', file: 'Loner.umm', name: 'Loner', x: -1780, z: 1780, color: 0x5a6b8a, amp: 1.3, loot: 8 },
+  { id: 'drift', file: 'Drift.umm', name: 'Drift', x: -1780, z: -620, color: 0xa8b8c8, amp: 1.35, loot: 8 },
 ];
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -88,7 +87,7 @@ function bakeUmm(j, zn) {
   return { heights, trees, blocks, night: !!(j.night || j.midnight), pvp: !!j.pvp };
 }
 
-function bakeNuclearism() {
+function bakeEroded() {
   // Their features live at 750–1000 m scale, so compress ~2.2× into our 480 m
   // zone, and pick the seed whose window has the most relief (baseHeight scan
   // is cheap; the hydraulic-erosion field is only built for the winner).
@@ -103,7 +102,7 @@ function bakeNuclearism() {
     const relief = hs[Math.floor(hs.length * 0.97)] - hs[Math.floor(hs.length * 0.05)];
     if (!best || relief > best.relief) best = { seed, relief };
   }
-  console.log(`  nuclearism seed ${best.seed} relief ${best.relief.toFixed(1)}m`);
+  console.log(`  eroded seed ${best.seed} relief ${best.relief.toFixed(1)}m`);
   const terr = createRealisticTerrain(best.seed);
   terr.recenter(0, 0);                        // build the erosion field
   const hc = terr.height(0, 0);
@@ -118,11 +117,11 @@ function bakeNuclearism() {
 
 function main() {
   const srcDir = process.argv[2];
-  if (!srcDir) { console.error('usage: node tools/bake_maps.mjs <UNMANNED/maps dir>'); process.exit(1); }
+  if (!srcDir) { console.error('usage: node tools/bake_maps.mjs <.umm maps dir>'); process.exit(1); }
   const zones = [];
   for (const zn of ZONES) {
     let baked;
-    if (zn.src === 'nuclearism') baked = bakeNuclearism();
+    if (zn.gen) baked = bakeEroded();
     else {
       const file = path.join(srcDir, zn.file);
       baked = bakeUmm(JSON.parse(fs.readFileSync(file, 'utf8')), zn);
@@ -140,13 +139,13 @@ function main() {
       }
     }
     zones.push({
-      id: zn.id, name: zn.name, src: zn.src, x: zn.x, z: zn.z, color: zn.color,
+      id: zn.id, name: zn.name, x: zn.x, z: zn.z, color: zn.color,
       loot: zn.loot, grid: GRID, half: HALF, blend: 130, night: baked.night, pvp: baked.pvp,
       heights: baked.heights, trees: baked.trees, blocks: baked.blocks,
     });
-    console.log(`baked ${zn.name} (${zn.src}) trees=${baked.trees.length} blocks=${baked.blocks.length} h=[${Math.min(...baked.heights)}..${Math.max(...baked.heights)}]`);
+    console.log(`baked ${zn.name} (${zn.file || 'generator'}) trees=${baked.trees.length} blocks=${baked.blocks.length} h=[${Math.min(...baked.heights)}..${Math.max(...baked.heights)}]`);
   }
-  const header = `// GENERATED by tools/bake_maps.mjs — do not hand-edit.\n// Imported maps © their authors: UNMANNED + nuclearism by AIX-32\n// (https://github.com/AIX-32/UNMANNED, https://github.com/AIX-32/nuclearism).\n// Heights are RELATIVE metres on a ${GRID}×${GRID} grid spanning ${DISPLAY} m; zones are\n// anchored to native terrain at runtime (server/map.js / public/js/world.js).\n`;
+  const header = `// GENERATED by tools/bake_maps.mjs — do not hand-edit.\n// Heights are RELATIVE metres on a ${GRID}×${GRID} grid spanning ${DISPLAY} m; zones are\n// anchored to native terrain at runtime (server/map.js / public/js/world.js).\n`;
   const body = JSON.stringify({ zones });
   fs.writeFileSync(path.join(ROOT, 'server/maps_data.js'), header + `module.exports = ${body};\n`);
   fs.writeFileSync(path.join(ROOT, 'public/js/maps_data.js'), header + `export const MAPS_DATA = ${body};\n`);

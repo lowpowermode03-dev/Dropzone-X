@@ -4,9 +4,9 @@
 const MAP_SIZE = 4000;
 const HALF = MAP_SIZE / 2;
 
-// Imported maps (AIX-32/UNMANNED .umm + AIX-32/nuclearism generator), baked by
-// tools/bake_maps.mjs into terrain stamps. See server/maps_data.js.
-const IMPORTED_ZONES = require('./maps_data').zones;
+// Expansion zones baked by tools/bake_maps.mjs into terrain stamps.
+// See server/maps_data.js.
+const EXPANSION_ZONES = require('./maps_data').zones;
 
 function mulberry32(seed) {
   return function () {
@@ -116,12 +116,12 @@ function terrainNative(x, z) {
   return h;
 }
 
-// Imported-zone terrain stamps: baked relative heightfields blended over the
+// Expansion-zone terrain stamps: baked relative heightfields blended over the
 // native terrain (full weight inside the zone, smoothstep ring outside).
 // MUST match client world.js exactly.
 function terrainHeight(x, z) {
   let h = terrainNative(x, z);
-  for (const zn of IMPORTED_ZONES) {
+  for (const zn of EXPANSION_ZONES) {
     const dx = x - zn.x, dz = z - zn.z;
     const R = zn.half + zn.blend;
     const d2 = dx * dx + dz * dz;
@@ -177,9 +177,9 @@ const POIS = [
   { name: 'Misty Meadows', x: -400, z: 1500, r: 140, color: 0xa8dadc },
   { name: 'Lonely Lodge', x: 1400, z: -1200, r: 130, color: 0xbc6c25 },
 ];
-// Imported POIs ride at the end (keeps the original rng streams untouched).
-for (const zn of IMPORTED_ZONES) {
-  POIS.push({ name: zn.name, x: zn.x, z: zn.z, r: 230, color: zn.color, imported: zn.src, zoneId: zn.id, loot: zn.loot, night: zn.night || undefined });
+// Expansion POIs ride at the end (keeps the original rng streams untouched).
+for (const zn of EXPANSION_ZONES) {
+  POIS.push({ name: zn.name, x: zn.x, z: zn.z, r: 230, color: zn.color, zoneId: zn.id, loot: zn.loot, night: zn.night || undefined });
 }
 
 // Buildings per POI: deterministic boxes
@@ -188,9 +188,9 @@ function genBuildings() {
   const buildings = [];
   for (const poi of POIS) {
     if (poi.zoneId) {
-      const zn = IMPORTED_ZONES.find(z => z.id === poi.zoneId);
+      const zn = EXPANSION_ZONES.find(z => z.id === poi.zoneId);
       if (zn.blocks.length) {
-        // authored layout baked from the source map (UNMANNED Arena blocks)
+        // authored layout baked from the Arena map blocks
         for (const b of zn.blocks) {
           if (b.h < 1.5) continue; // floor slabs aren't buildings
           buildings.push({ x: zn.x + b.x, z: zn.z + b.z, w: b.w, d: b.d, h: Math.max(3, b.h), poi: poi.name, color: poi.color, rot: b.rot });
@@ -263,12 +263,12 @@ function genNature() {
 
 // Anchor each zone to the native height at its centre (before any generation
 // below samples terrainHeight).
-for (const zn of IMPORTED_ZONES) zn._b = terrainNative(zn.x, zn.z);
+for (const zn of EXPANSION_ZONES) zn._b = terrainNative(zn.x, zn.z);
 
 const BUILDINGS = genBuildings();
 const { trees: TREES, rocks: ROCKS } = genNature();
-// Trees authored in the imported maps, converted to world coords.
-for (const zn of IMPORTED_ZONES) {
+// Trees authored in the expansion maps, converted to world coords.
+for (const zn of EXPANSION_ZONES) {
   for (const t of zn.trees) {
     TREES.push({ x: zn.x + t[0], z: zn.z + t[1], s: t[2], r: Math.abs(((t[0] * 31 + t[1] * 17) % 628)) / 100 });
   }
@@ -293,4 +293,4 @@ function genLootSpawns() {
 }
 const LOOT_SPAWNS = genLootSpawns();
 
-module.exports = { MAP_SIZE, HALF, terrainHeight, terrainNative, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS, RIVERS, IMPORTED_ZONES };
+module.exports = { MAP_SIZE, HALF, terrainHeight, terrainNative, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS, RIVERS, EXPANSION_ZONES };
