@@ -53,6 +53,37 @@ The repo is Vercel-ready (`vercel.json` + `api/index.js` serverless entry; the s
   3. Open your Vercel site once as `https://your-site.vercel.app/?server=https://dropzone-x-server.onrender.com` — the browser remembers the game server from then on.
   4. Make sure `JWT_SECRET` and the Supabase values are **identical** in Vercel and Render, or the game server will reject website logins.
 
+## 🗺️ Imported Maps — UNMANNED + nuclearism (by AIX-32)
+
+Six maps from [AIX-32](https://github.com/AIX-32)'s projects are imported into
+Dropzone Island as full playable POIs around the island rim, stamped into the
+shared server/client terrain (identical height math both sides):
+
+| Zone | Source | What you get |
+|---|---|---|
+| **Nuclearism Highlands** | [nuclearism](https://github.com/AIX-32/nuclearism) terrain generator | Seeded Perlin + hydraulic-erosion highlands (baked offline), rust-industrial town, loot-rich (14 spawns) |
+| **Arena** | [UNMANNED](https://github.com/AIX-32/UNMANNED) `Arena.umm` | Flat PvP arena bowl with its 10 authored blocks as buildings |
+| **Silence Vale** | UNMANNED `SilenceVale.umm` | Authored valley terrain + its 95 trees |
+| **Gulled** | UNMANNED `Gulled.umm` | Gulch terrain, orange desert town |
+| **Loner** | UNMANNED `Loner.umm` | Midnight marsh with ponds, blue-grey outpost (flagged "night zone" in-game) |
+| **Drift** | UNMANNED `Drift.umm` | Coastal drift terrain + authored trees |
+
+UNMANNED maps are `.umm` JSON (terrain heightfield + props + blocks), parsed
+directly. nuclearism is procedurally generated, so its actual generator
+(`assets/js/terrain-realistic.js`, vendored at `tools/nuc_terrain.mjs`) is run
+offline and its erosion-baked heightfield is stamped in. Each zone is a 480 m
+landmass with a smooth blend ring, its own building colour, loot spawns, and a
+minimap label; the location banner credits the source ("IMPORTED · UNMANNED").
+
+Re-bake after updating sources:
+
+```bash
+git clone https://github.com/AIX-32/UNMANNED /tmp/unmanned
+node tools/bake_maps.mjs /tmp/unmanned/maps   # writes server/maps_data.js + public/js/maps_data.js
+```
+
+Map data remains © its author (AIX-32); Dropzone X imports it with credit.
+
 ## ⛰️ The Highlands (GTA-scale terrain pass)
 
 - **Six playable mountain massifs** baked into the shared terrain function (server physics, bots, loot and client all agree): Mount Apex (288 m), Kings Crown (243 m), Titan Peak (218 m), Razorback Ridge (207 m), Verde Highlands (205 m) and Solstice Peaks (175 m) — now shaped like real peaks: 3 radiating arête ridges each (Everest-style), fluted valleys, steep summit pyramids, and soft-terraced **cliff bands with benches and sheer drops**, plus geological strata coloring, talus fields of fallen rock at cliff bases, jagged summit crags, scree aprons, and snowfields above ~110 m that settle on the ledges

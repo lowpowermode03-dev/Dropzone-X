@@ -1,6 +1,11 @@
 // FortWorld world building — AAA pass: procedural PBR textures, roads, instanced
 // vegetation/props/lamps/cars, animated clouds, custom GLSL sky/water/storm.
 import * as THREE from 'three';
+import { MAPS_DATA } from './maps_data.js';
+
+// Imported maps (AIX-32/UNMANNED + AIX-32/nuclearism), baked by
+// tools/bake_maps.mjs. MUST match server/map.js exactly.
+const IMPORTED_ZONES = MAPS_DATA.zones;
 
 // Must match server/map.js exactly
 const HILLS = [
@@ -54,7 +59,7 @@ export function riverAt(x, z) {
   }
   return best;
 }
-export function terrainHeight(x, z) {
+function terrainNative(x, z) {
   let h = Math.sin(x * 0.004) * 8 + Math.cos(z * 0.005) * 8 + Math.sin((x + z) * 0.0022) * 6;
   for (const hill of HILLS) {
     const dx = x - hill.x, dz = z - hill.z;
@@ -124,6 +129,32 @@ export function terrainHeight(x, z) {
   if (edge > 1500) { const t = Math.min(1, (edge - 1500) / 500); h = h * (1 - t) + (-14) * t; }
   return h;
 }
+// Imported-zone terrain stamps. MUST match server/map.js exactly.
+export function terrainHeight(x, z) {
+  let h = terrainNative(x, z);
+  for (const zn of IMPORTED_ZONES) {
+    const dx = x - zn.x, dz = z - zn.z;
+    const R = zn.half + zn.blend;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= R * R) continue;
+    const g = zn.grid - 1;
+    let gx = (dx + zn.half) / (2 * zn.half) * g;
+    let gz = (dz + zn.half) / (2 * zn.half) * g;
+    gx = gx < 0 ? 0 : gx > g - 0.001 ? g - 0.001 : gx;
+    gz = gz < 0 ? 0 : gz > g - 0.001 ? g - 0.001 : gz;
+    const ix = Math.floor(gx), iz = Math.floor(gz), fx = gx - ix, fz = gz - iz;
+    const H = zn.heights, n = zn.grid;
+    const a = H[iz * n + ix] * (1 - fx) + H[iz * n + ix + 1] * fx;
+    const b = H[(iz + 1) * n + ix] * (1 - fx) + H[(iz + 1) * n + ix + 1] * fx;
+    const target = zn._b + a * (1 - fz) + b * fz;
+    const d = Math.sqrt(d2);
+    let w = 1;
+    if (d > zn.half) { const t = (d - zn.half) / zn.blend; w = 1 - t * t * (3 - 2 * t); }
+    h = h * (1 - w) + target * w;
+  }
+  return h;
+}
+for (const zn of IMPORTED_ZONES) zn._b = terrainNative(zn.x, zn.z);
 // 0..1 mountain influence at a point (for colouring / scatter decisions)
 export function mountainMask(x, z) {
   let m = 0;
