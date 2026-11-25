@@ -11,9 +11,13 @@ const WEAPONS = {
   shotgun: { id: 'shotgun', name: 'Shotgun', type: 'hitscan', damage: 11, range: 45, fireRate: 850, mag: 5, reload: 2400, spread: 0.09, pellets: 8, auto: false },
   sniper: { id: 'sniper', name: 'Sniper Rifle', type: 'hitscan', damage: 105, range: 400, fireRate: 1400, mag: 1, reload: 2600, spread: 0.002, pellets: 1, auto: false },
   lmg: { id: 'lmg', name: 'Light Machine Gun', type: 'hitscan', damage: 26, range: 180, fireRate: 120, mag: 75, reload: 3200, spread: 0.05, pellets: 1, auto: true },
+  burst: { id: 'burst', name: 'Burst Assault Rifle', type: 'hitscan', damage: 27, range: 210, fireRate: 230, mag: 30, reload: 1900, spread: 0.022, pellets: 1, auto: true },
+  revolver: { id: 'revolver', name: 'Hand Cannon', type: 'hitscan', damage: 52, range: 150, fireRate: 520, mag: 6, reload: 1700, spread: 0.012, pellets: 1, auto: false },
+  pump: { id: 'pump', name: 'Pump Shotgun', type: 'hitscan', damage: 12, range: 42, fireRate: 980, mag: 6, reload: 2600, spread: 0.1, pellets: 7, auto: false },
+  dmr: { id: 'dmr', name: 'Marksman Rifle', type: 'hitscan', damage: 58, range: 330, fireRate: 470, mag: 10, reload: 2200, spread: 0.004, pellets: 1, auto: false },
 };
 
-const GUN_IDS = ['pistol', 'smg', 'ar', 'shotgun', 'sniper', 'lmg'];
+const GUN_IDS = ['pistol', 'smg', 'ar', 'shotgun', 'sniper', 'lmg', 'burst', 'revolver', 'pump', 'dmr'];
 
 const ITEMS = {
   shield_small: { id: 'shield_small', name: 'Small Shield Potion', type: 'shield', amount: 25, useTime: 2000 },

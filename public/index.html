@@ -123,7 +123,7 @@
     <div class="logo small">DROPZONE<span>_X</span></div>
     <div class="player-chip">
       <div class="avatar" id="lobbyAvatar">?</div>
-      <div><div id="lobbyName">Player</div><div id="lobbyLevel" class="tiny">Level 1</div></div>
+      <div><div id="lobbyName">Player</div><div id="lobbyLevel" class="tiny">Level 1</div><div class="xpbar"><div id="xpFill"></div></div></div>
       <div class="vbucks">🪙 <span id="lobbyVbucks">0</span></div>
       <a class="btn discord-btn sm" href="https://discord.gg/rHvJcQAeAN" target="_blank" rel="noopener" style="text-decoration:none">💬 Discord</a>
       <button id="btnSettingsLobby" class="btn ghost sm">⚙️ Settings</button>
@@ -166,6 +166,13 @@
             </select>
           </label>
         </div>
+      </div>
+      <div class="panel daily" id="dailyCard">
+        <h3>🎁 Daily Reward</h3>
+        <div id="dailyStreak" class="tiny">Daily reward</div>
+        <div id="dailyReward" class="daily-reward">+40 🪙 V-Bucks · +60 XP</div>
+        <button id="btnDaily" class="btn play sm hidden">CLAIM REWARD</button>
+        <div id="dailyTimer" class="tiny"></div>
       </div>
       <div class="panel howto">
         <h3>🎮 Controls</h3>
@@ -226,6 +233,7 @@
   <div id="hitmarker">✕</div>
   <div id="damageNums"></div>
   <div id="killBanner" class="hidden">ELIMINATION</div>
+  <div id="vbToast" class="hidden">+30 🪙 V-BUCKS</div>
   <div id="locationBanner" class="hidden"><div id="locationName">MOUNT APEX</div><div id="locationSub">THE HIGHLANDS</div></div>
   <div id="scopeOverlay"><div class="scope-circle"><span class="scope-h"></span><span class="scope-v"></span></div></div>
   <div id="reloadWrap"><div id="reloadFill"></div></div>
@@ -237,6 +245,7 @@
     <div class="hud-chips">
       <div id="stormInfo" class="storm-info">⛈️ Storm: —</div>
       <div id="aliveInfo" class="alive-info">👥 24</div>
+      <div id="killInfo" class="alive-info">💀 0</div>
       <div id="compass" class="compass">N</div>
       <div id="fpsBox" class="compass hidden">60 FPS</div>
     </div>

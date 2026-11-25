@@ -265,6 +265,37 @@ function genNature() {
 // below samples terrainHeight).
 for (const zn of EXPANSION_ZONES) zn._b = terrainNative(zn.x, zn.z);
 
+// Mountain detail: boulders, crags and alpine pines scattered over the
+// massifs so the high country is dressed like the authored maps (which carry
+// hundreds of props). Deterministic; runs before BUILDINGS so nothing else
+// shifts. Rocks/trees get real colliders (server game.js + client world.js).
+function genMountainDetail(trees, rocks) {
+  const rng = mulberry32(9099);
+  const slopeAt = (x, z) => Math.max(Math.abs(terrainHeight(x + 6, z) - terrainHeight(x - 6, z)), Math.abs(terrainHeight(x, z + 6) - terrainHeight(x, z - 6))) / 12;
+  for (const m of MOUNTAINS) {
+    for (let i = 0; i < 210; i++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(rng()) * m.r * 1.35;
+      const x = m.x + Math.cos(a) * d, z = m.z + Math.sin(a) * d;
+      if (Math.abs(x) > 1950 || Math.abs(z) > 1950) continue;
+      const h = terrainHeight(x, z);
+      if (h < 3) continue;
+      let nearPoi = false;
+      for (const p of POIS) { const dx = x - p.x, dz = z - p.z; if (dx * dx + dz * dz < (p.r + 40) * (p.r + 40)) { nearPoi = true; break; } }
+      if (nearPoi) continue;
+      const sl = slopeAt(x, z);
+      if (h > 100 || sl > 0.55) {
+        // high crags + steep-slope boulders (some huge)
+        rocks.push({ x, z, s: 1.1 + rng() * (h > 120 ? 3.2 : 2.0), r: rng() * Math.PI * 2 });
+      } else if (h > 45 && rng() < 0.6) {
+        trees.push({ x, z, s: 1.1 + rng() * 1.1, r: rng() * Math.PI * 2 }); // alpine pines
+      } else if (rng() < 0.5) {
+        rocks.push({ x, z, s: 0.7 + rng() * 1.2, r: rng() * Math.PI * 2 }); // scree stones
+      }
+    }
+  }
+}
+
 const BUILDINGS = genBuildings();
 const { trees: TREES, rocks: ROCKS } = genNature();
 // Trees authored in the expansion maps, converted to world coords.
@@ -273,6 +304,7 @@ for (const zn of EXPANSION_ZONES) {
     TREES.push({ x: zn.x + t[0], z: zn.z + t[1], s: t[2], r: Math.abs(((t[0] * 31 + t[1] * 17) % 628)) / 100 });
   }
 }
+genMountainDetail(TREES, ROCKS);
 
 
 // Loot spawn points: POI centers + random
