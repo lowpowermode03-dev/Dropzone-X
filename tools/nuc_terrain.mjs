@@ -1,7 +1,5 @@
-// Vendored from AIX-32/nuclearism (assets/js/terrain-realistic.js) —
-// its seeded Perlin + hydraulic-erosion terrain generator, used OFFLINE by
-// tools/bake_maps.mjs to bake the "Nuclearism Highlands" zone into Dropzone X.
-// Credit: AIX-32 — https://github.com/AIX-32/nuclearism
+// Seeded Perlin + hydraulic-erosion terrain generator, used OFFLINE by
+// tools/bake_maps.mjs to bake the "Ashen Highlands" zone into Dropzone X.
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
