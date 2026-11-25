@@ -242,7 +242,7 @@ class Room {
       attacker.damageDealt += amount;
       this.toPlayer(attacker.id, 'hitmarker', { damage: Math.round(amount), headshot: !!headshot, shieldHit: target.shield > 0 });
     }
-    this.toPlayer(target.id, 'youTookDamage', { health: target.health, shield: target.shield, from: attacker ? attacker.username : (fromLabel || 'Storm') });
+    this.toPlayer(target.id, 'youTookDamage', { health: target.health, shield: target.shield, from: attacker ? attacker.username : (fromLabel || 'Storm'), ax: attacker ? attacker.x : null, az: attacker ? attacker.z : null });
     if (target.health <= 0) {
       target.health = 0;
       this.eliminate(target, attacker, weaponName);

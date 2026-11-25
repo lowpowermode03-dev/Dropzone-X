@@ -376,3 +376,33 @@ a.discord-btn{text-decoration:none}
 .daily-reward{font-size:20px;font-weight:900;color:#fff;margin:6px 0 10px}
 #btnDaily{margin:4px 0 8px}
 #dailyTimer{color:#aeb9cc;font-weight:700}
+
+/* ===== Scroll fix + global polish ===== */
+/* Screens were fixed flex boxes that clipped tall content (you couldn't
+   scroll the lobby/auth/settings). Now every screen scrolls its own
+   content, and centered cards use margin:auto so nothing is trapped. */
+.screen{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable}
+#authScreen>*,#endScreen>*,#settingsScreen>*,#loadingScreen>*{margin:auto}
+.derc-home{overflow-y:visible}
+#lobbyScreen{scroll-behavior:smooth}
+.lobby-grid{padding-bottom:56px}
+#leaderboard{max-height:340px;overflow-y:auto;padding-right:4px}
+.chat-log{scrollbar-gutter:stable}
+/* Derc scrollbars (thin white-on-black) */
+*{scrollbar-width:thin;scrollbar-color:#454e63 #0a0a0f}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#0a0a0f}
+::-webkit-scrollbar-thumb{background:#454e63;border:2px solid #0a0a0f;border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#f4f6fb}
+/* feel + accessibility */
+html{-webkit-text-size-adjust:100%}
+::selection{background:#f4f6fb;color:#050505}
+.screen:not(.hidden){animation:screenIn .22s ease}
+@keyframes screenIn{from{opacity:0}to{opacity:1}}
+.btn:active,.tbtn:active,.ltab:active{transform:scale(.96)}
+.btn,.ltab,.skin-card,.derc-card{transition:transform .15s ease,background .15s ease,color .15s ease,border-color .15s ease,box-shadow .15s ease}
+:focus-visible{outline:2px solid #f4f6fb;outline-offset:2px}
+.derc-card{cursor:pointer}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01s!important;transition-duration:.01s!important}}
+
+#dmgDir{position:absolute;left:50%;top:44%;width:150px;height:150px;margin:0;border-radius:50%;border:5px solid transparent;border-top-color:rgba(255,64,64,.95);opacity:0;transition:opacity .45s ease;z-index:6;pointer-events:none;filter:drop-shadow(0 0 6px rgba(255,0,0,.7))}
