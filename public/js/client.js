@@ -1630,7 +1630,7 @@ function checkLocation(now) {
   let bestScore = 1e9;
   for (const p of G.data.pois) {
     const d = Math.hypot(G.pos.x - p.x, G.pos.z - p.z);
-    if (d < p.r && d / p.r < bestScore) { bestScore = d / p.r; place = p.name; sub = 'DROPZONE ISLAND'; }
+    if (d < p.r && d / p.r < bestScore) { bestScore = d / p.r; place = p.name; sub = p.imported ? ('IMPORTED · ' + (p.imported === 'nuclearism' ? 'NUCLEARISM' : 'UNMANNED') + (p.night ? ' · NIGHT ZONE' : '')) : 'DROPZONE ISLAND'; }
   }
   if (!place) {
     const rf = riverAt(G.pos.x, G.pos.z);

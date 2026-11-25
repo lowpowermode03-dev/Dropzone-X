@@ -4,6 +4,10 @@
 const MAP_SIZE = 4000;
 const HALF = MAP_SIZE / 2;
 
+// Imported maps (AIX-32/UNMANNED .umm + AIX-32/nuclearism generator), baked by
+// tools/bake_maps.mjs into terrain stamps. See server/maps_data.js.
+const IMPORTED_ZONES = require('./maps_data').zones;
+
 function mulberry32(seed) {
   return function () {
     let t = (seed += 0x6d2b79f5);
@@ -34,7 +38,7 @@ const MOUNTAINS = [
   { name: 'Solstice Peaks', x: 700, z: 1650, r: 520, h: 175 },
 ];
 
-function terrainHeight(x, z) {
+function terrainNative(x, z) {
   // base rolling
   let h = Math.sin(x * 0.004) * 8 + Math.cos(z * 0.005) * 8 + Math.sin((x + z) * 0.0022) * 6;
   // gaussian hills
@@ -112,6 +116,34 @@ function terrainHeight(x, z) {
   return h;
 }
 
+// Imported-zone terrain stamps: baked relative heightfields blended over the
+// native terrain (full weight inside the zone, smoothstep ring outside).
+// MUST match client world.js exactly.
+function terrainHeight(x, z) {
+  let h = terrainNative(x, z);
+  for (const zn of IMPORTED_ZONES) {
+    const dx = x - zn.x, dz = z - zn.z;
+    const R = zn.half + zn.blend;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= R * R) continue;
+    const g = zn.grid - 1;
+    let gx = (dx + zn.half) / (2 * zn.half) * g;
+    let gz = (dz + zn.half) / (2 * zn.half) * g;
+    gx = gx < 0 ? 0 : gx > g - 0.001 ? g - 0.001 : gx;
+    gz = gz < 0 ? 0 : gz > g - 0.001 ? g - 0.001 : gz;
+    const ix = Math.floor(gx), iz = Math.floor(gz), fx = gx - ix, fz = gz - iz;
+    const H = zn.heights, n = zn.grid;
+    const a = H[iz * n + ix] * (1 - fx) + H[iz * n + ix + 1] * fx;
+    const b = H[(iz + 1) * n + ix] * (1 - fx) + H[(iz + 1) * n + ix + 1] * fx;
+    const target = zn._b + a * (1 - fz) + b * fz;
+    const d = Math.sqrt(d2);
+    let w = 1;
+    if (d > zn.half) { const t = (d - zn.half) / zn.blend; w = 1 - t * t * (3 - 2 * t); }
+    h = h * (1 - w) + target * w;
+  }
+  return h;
+}
+
 // Rivers: descending channels carved into the terrain (only ever cut down).
 // MUST match client world.js exactly. src/dst = channel bed elevations.
 const RIVERS = [
@@ -145,12 +177,49 @@ const POIS = [
   { name: 'Misty Meadows', x: -400, z: 1500, r: 140, color: 0xa8dadc },
   { name: 'Lonely Lodge', x: 1400, z: -1200, r: 130, color: 0xbc6c25 },
 ];
+// Imported POIs ride at the end (keeps the original rng streams untouched).
+for (const zn of IMPORTED_ZONES) {
+  POIS.push({ name: zn.name, x: zn.x, z: zn.z, r: 230, color: zn.color, imported: zn.src, zoneId: zn.id, loot: zn.loot, night: zn.night || undefined });
+}
 
 // Buildings per POI: deterministic boxes
 function genBuildings() {
   const rng = mulberry32(1337);
   const buildings = [];
   for (const poi of POIS) {
+    if (poi.zoneId) {
+      const zn = IMPORTED_ZONES.find(z => z.id === poi.zoneId);
+      if (zn.blocks.length) {
+        // authored layout baked from the source map (UNMANNED Arena blocks)
+        for (const b of zn.blocks) {
+          if (b.h < 1.5) continue; // floor slabs aren't buildings
+          buildings.push({ x: zn.x + b.x, z: zn.z + b.z, w: b.w, d: b.d, h: Math.max(3, b.h), poi: poi.name, color: poi.color, rot: b.rot });
+        }
+      } else {
+        // ring settlement in the zone's own colour; each slot probes a few
+        // radii and keeps the flattest footing (server-side only placement)
+        const flatness = (bx, bz, bw, bd) => {
+          const y = terrainHeight(bx, bz);
+          return Math.max(
+            Math.abs(terrainHeight(bx + bw / 2, bz + bd / 2) - y), Math.abs(terrainHeight(bx - bw / 2, bz + bd / 2) - y),
+            Math.abs(terrainHeight(bx + bw / 2, bz - bd / 2) - y), Math.abs(terrainHeight(bx - bw / 2, bz - bd / 2) - y));
+        };
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + 0.4;
+          const w = 18 + rng() * 26, dep = 18 + rng() * 26, h = 10 + rng() * 20;
+          const rot = Math.floor(rng() * 4) * (Math.PI / 2);
+          let bx = poi.x, bz = poi.z, bestF = Infinity;
+          for (const rr of [0.32, 0.44, 0.56, 0.68]) for (const da of [0, -0.35, 0.35]) {
+            const cx = poi.x + Math.cos(a + da) * poi.r * rr, cz = poi.z + Math.sin(a + da) * poi.r * rr;
+            const f = flatness(cx, cz, w, dep);
+            if (f < bestF) { bestF = f; bx = cx; bz = cz; }
+          }
+          buildings.push({ x: bx, z: bz, w, d: dep, h, poi: poi.name, color: poi.color, rot });
+        }
+        buildings.push({ x: poi.x, z: poi.z, w: 26, d: 26, h: 32 + rng() * 18, poi: poi.name, color: poi.color, rot: 0, tower: true });
+      }
+      continue;
+    }
     const n = 8 + Math.floor(rng() * 6);
     for (let i = 0; i < n; i++) {
       const a = rng() * Math.PI * 2;
@@ -192,15 +261,26 @@ function genNature() {
   return { trees, rocks };
 }
 
+// Anchor each zone to the native height at its centre (before any generation
+// below samples terrainHeight).
+for (const zn of IMPORTED_ZONES) zn._b = terrainNative(zn.x, zn.z);
+
 const BUILDINGS = genBuildings();
 const { trees: TREES, rocks: ROCKS } = genNature();
+// Trees authored in the imported maps, converted to world coords.
+for (const zn of IMPORTED_ZONES) {
+  for (const t of zn.trees) {
+    TREES.push({ x: zn.x + t[0], z: zn.z + t[1], s: t[2], r: Math.abs(((t[0] * 31 + t[1] * 17) % 628)) / 100 });
+  }
+}
+
 
 // Loot spawn points: POI centers + random
 function genLootSpawns() {
   const rng = mulberry32(777);
   const pts = [];
   for (const p of POIS) {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < (p.loot || 8); i++) {
       const a = rng() * Math.PI * 2;
       const d = rng() * p.r * 0.8;
       pts.push({ x: p.x + Math.cos(a) * d, z: p.z + Math.sin(a) * d });
@@ -213,4 +293,4 @@ function genLootSpawns() {
 }
 const LOOT_SPAWNS = genLootSpawns();
 
-module.exports = { MAP_SIZE, HALF, terrainHeight, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS, RIVERS };
+module.exports = { MAP_SIZE, HALF, terrainHeight, terrainNative, POIS, BUILDINGS, TREES, ROCKS, LOOT_SPAWNS, HILLS, MOUNTAINS, RIVERS, IMPORTED_ZONES };
