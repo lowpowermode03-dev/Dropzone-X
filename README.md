@@ -53,6 +53,38 @@ The repo is Vercel-ready (`vercel.json` + `api/index.js` serverless entry; the s
   3. Open your Vercel site once as `https://your-site.vercel.app/?server=https://dropzone-x-server.onrender.com` — the browser remembers the game server from then on.
   4. Make sure `JWT_SECRET` and the Supabase values are **identical** in Vercel and Render, or the game server will reject website logins.
 
+## ⚔️ Combat & Progression Update
+
+- **Solid world** — tree trunks and boulders now block bullets and bodies
+  (server raycasts + bot/mob push-out; client colliders mirror them, and you
+  can stand on boulders). Felled trees stop blocking.
+- **Map shaders** — terrain vertex shading now blends per-zone biome tints
+  (ash, marsh, desert, lush…) with the terrain stamps, plus craggy rock
+  jitter on the mountains.
+- **Mountain detail** — the massifs are dressed like the authored maps:
+  ~550 extra boulders/crags/scree and alpine pines (all solid, all loot-free
+  wilderness). Island totals: 1,257 trees · 1,353 rocks.
+- **HUD 2.0 (Derc)** — the old gold HUD is fully merged into the Derc
+  monochrome dashboard: glass chips for storm/alive/kills, numeric HP/shield
+  bars, big ammo counter, white kill banner, and a `+30 🪙` V-Bucks toast.
+- **Levels & daily reward** — XP bar under your lobby name (multi-level
+  engine, +100 V-Bucks per level). Daily reward (UTC day): **40 V-Bucks +
+  60 XP**, streaks add +5/+5 per day capped at +25/+40 — useful, never OP.
+  Guests (noob accounts) can't claim, as always.
+- **Pistol start** — everyone drops with a Pistol in slot 2 (12 rounds +
+  light ammo). No more defenceless landings.
+- **10 guns** — new: Burst Assault Rifle, Hand Cannon (revolver), Pump
+  Shotgun, Marksman Rifle — all in the loot pool with rarities.
+- **Kill = 30 V-Bucks** — every elimination credits your account instantly
+  (registered accounts; watch the toast).
+- **Realistic bots** — each bot rolls a tier: ~35% **noob** (slow reactions,
+  wild aim), ~40% **mid**, ~25% **pro** (fast reactions, strafing, combat
+  hops, heals and disengages when hurt). Smooth turn rates, reaction delays
+  and burst discipline replace the old snap-aim.
+- **Mobs (PvE)** — 34 wild mobs per match (Wild Boars + tougher Night
+  Stalkers) roam POIs and wilderness, aggro and bite fighters, and drop loot
+  when killed. They're shootable targets with HP bars.
+
 ## 🗺️ Expansion Zones
 
 Six expansion landmasses ring Dropzone Island as full playable POIs, stamped

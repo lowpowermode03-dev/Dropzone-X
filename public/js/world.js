@@ -613,6 +613,25 @@ export function buildWorld(scene, data, quality = {}) {
     cForest = new THREE.Color(0x1e6b30), cScree = new THREE.Color(0xa49a86), cWet = new THREE.Color(0x4f4a33);
   const tmp = new THREE.Color();
   const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+  // Expansion-zone ground tints, blended with the same weight as the terrain
+  // stamps so the zones read as their own biomes in the map shaders.
+  const ZONE_TINTS = {
+    ashen: new THREE.Color(0x9a7a5c), arena: new THREE.Color(0xb9bbb0),
+    silencevale: new THREE.Color(0x2f7a33), gulled: new THREE.Color(0xcf9a55),
+    loner: new THREE.Color(0x3d5a66), drift: new THREE.Color(0x8fae9d),
+  };
+  const zoneTintAt = (x, z) => {
+    let best = null, bw = 0;
+    for (const zn of MAPS_DATA.zones) {
+      const tint = ZONE_TINTS[zn.id]; if (!tint) continue;
+      const d = Math.hypot(x - zn.x, z - zn.z);
+      const R = zn.half + zn.blend;
+      if (d >= R) continue;
+      const w = d <= zn.half ? 1 : 1 - smooth(zn.half, R, d);
+      if (w > bw) { bw = w; best = tint; }
+    }
+    return best ? { tint: best, w: bw } : null;
+  };
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     const h = terrainHeight(x, z);
@@ -643,6 +662,14 @@ export function buildWorld(scene, data, quality = {}) {
         const wet = (1 - Math.max(0, h - rf.bed) / 2.6) * Math.min(1, Math.max(0, (rf.w - rf.d) / rf.w) + 0.25);
         tmp.lerp(cWet, Math.min(0.62, wet * 0.62));
       }
+      // mountain micro-detail: per-vertex rock jitter so slopes read craggy
+      if (mm > 0.25) {
+        const j = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+        tmp.offsetHSL(0, 0, ((j - Math.floor(j)) - 0.5) * 0.07);
+      }
+      // expansion-zone biome tint
+      const zt = zoneTintAt(x, z);
+      if (zt) tmp.lerp(zt.tint, zt.w * 0.52);
     }
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
@@ -858,6 +885,7 @@ export function buildWorld(scene, data, quality = {}) {
     dummy.rotation.set(0, t.r, 0);
     dummy.position.set(t.x, y + 2.1 * t.s, t.z); dummy.scale.set(t.s, t.s, t.s); dummy.updateMatrix();
     trunkMesh.setMatrixAt(i, dummy.matrix);
+    { const cr = 0.55 * t.s; colliders.push({ minX: t.x - cr, maxX: t.x + cr, minZ: t.z - cr, maxZ: t.z + cr, minY: y - 0.5, maxY: y + 5.2 * t.s, type: 'tree', index: i }); }
     dummy.position.set(t.x, y + 6.4 * t.s, t.z); dummy.scale.set(t.s, t.s * 1.15, t.s); dummy.updateMatrix();
     canMesh.setMatrixAt(i, dummy.matrix);
     canMesh.setColorAt(i, tmpColor.setHSL(0.29 + rng() * 0.06, 0.5, 0.3 + rng() * 0.14));
@@ -871,6 +899,7 @@ export function buildWorld(scene, data, quality = {}) {
   const rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2.3, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, bumpMap: detailBumpTex(), bumpScale: 1.1 }), Math.max(1, data.rocks.length));
   rockMesh.castShadow = true;
   data.rocks.forEach((r, i) => {
+    { const gy = terrainHeight(r.x, r.z), cr = 1.9 * r.s; colliders.push({ minX: r.x - cr, maxX: r.x + cr, minZ: r.z - cr, maxZ: r.z + cr, minY: gy - 0.5, maxY: gy + 2.2 * r.s, type: 'rock', index: i }); }
     dummy.position.set(r.x, terrainHeight(r.x, r.z) + 0.5, r.z);
     dummy.scale.set(r.s, r.s * (0.7 + rng() * 0.5), r.s); dummy.rotation.set(r.r, r.r * 2, 0); dummy.updateMatrix();
     rockMesh.setMatrixAt(i, dummy.matrix);

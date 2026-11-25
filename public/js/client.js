@@ -8,7 +8,7 @@ const RARITY_COLORS = ['#b1b1b1', '#60aa3c', '#4d8fd1', '#b04dd1', '#e8a33d'];
 const RARITY_NAMES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
 const WEAPON_ICONS = { pickaxe: '⛏️', pistol: '🔫', smg: '💨', ar: '🎯', shotgun: '💥', sniper: '🔭', lmg: '🔥' };
 const ITEM_ICONS = { shield_small: '🧪', shield_big: '🛡️', medkit: '❤️', bandage: '🩹', ammo_light: '•', ammo_medium: '•', ammo_heavy: '•', ammo_shells: '•', wood: '🪵', stone: '🧱', metal: '🔩' };
-const AMMO_FOR = { pistol: 'light', smg: 'light', ar: 'medium', lmg: 'medium', sniper: 'heavy', shotgun: 'shells' };
+const AMMO_FOR = { pistol: 'light', smg: 'light', ar: 'medium', lmg: 'medium', sniper: 'heavy', shotgun: 'shells', burst: 'medium', revolver: 'heavy', pump: 'shells', dmr: 'heavy' };
 const AMMO_NAMES = { light: 'Light', medium: 'Medium', heavy: 'Heavy', shells: 'Shells' };
 
 let token = localStorage.getItem('fortworld_token') || null;
@@ -269,6 +269,8 @@ async function refreshLobby() {
     $('lobbyLevel').textContent = user.guest ? 'Guest · Noob account — no leveling (sign up to progress)' : `Level ${user.level} · ${user.xp} XP`;
     $('lobbyVbucks').textContent = user.vbucks;
     $('lobbyAvatar').textContent = user.username[0].toUpperCase();
+    $('xpFill').style.width = user.guest ? '0%' : Math.min(100, (user.xp / (user.xpNeed || 1000)) * 100) + '%';
+    updateDailyCard();
     const s = user.stats;
     const kd = s.matches ? (s.kills / Math.max(1, s.matches)).toFixed(2) : '0.00';
     const winRate = s.matches ? Math.round((s.wins / s.matches) * 100) : 0;
@@ -283,6 +285,50 @@ async function refreshLobby() {
     renderShop(lb);
   } catch (e) { console.warn(e); }
 }
+
+// +30 V-Bucks kill toast
+let vbToastTimer = 0;
+function showVbToast(amount) {
+  const el = $('vbToast');
+  el.textContent = `+${amount} 🪙 V-BUCKS`;
+  el.classList.remove('hidden');
+  el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  clearTimeout(vbToastTimer);
+  vbToastTimer = setTimeout(() => el.classList.add('hidden'), 1700);
+}
+
+// daily reward card
+function fmtCountdown(ms) {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0'), m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0'), ss = String(sec % 60).padStart(2, '0');
+  return `${h}:${m}:${ss}`;
+}
+function updateDailyCard() {
+  const card = $('dailyCard'); if (!card || !currentUser) return;
+  const d = currentUser.daily || { canClaim: false, streak: 0, reward: { vbucks: 40, xp: 60 }, nextAt: Date.now() + 3600000 };
+  if (currentUser.guest) {
+    $('dailyReward').innerHTML = 'Guest (noob) accounts don\'t earn rewards.<br><b>Create a free account</b> to claim daily V-Bucks + XP.';
+    $('btnDaily').classList.add('hidden');
+    $('dailyTimer').textContent = '';
+    return;
+  }
+  $('dailyStreak').textContent = d.streak > 1 ? `🔥 ${d.streak}-day streak` : 'Daily reward';
+  $('dailyReward').textContent = `+${d.reward.vbucks} 🪙 V-Bucks · +${d.reward.xp} XP`;
+  $('btnDaily').classList.toggle('hidden', !d.canClaim);
+  $('btnDaily').disabled = false;
+  $('dailyTimer').textContent = d.canClaim ? 'Ready to claim!' : 'Next reward in ' + fmtCountdown(d.nextAt - Date.now());
+}
+setInterval(() => { if (currentUser && !$('lobbyScreen').classList.contains('hidden')) updateDailyCard(); }, 1000);
+$('btnDaily').onclick = async () => {
+  $('btnDaily').disabled = true;
+  try {
+    const r = await api('/api/daily/claim', { method: 'POST', body: '{}' });
+    currentUser = r.user;
+    $('lobbyVbucks').textContent = r.user.vbucks;
+    showVbToast(r.reward.vbucks);
+    refreshLobby();
+  } catch (e) { $('dailyTimer').textContent = e.message; $('btnDaily').disabled = false; }
+};
 
 const COSMETIC_FIELDS = {
   skin: { owned: 'ownedSkins', equipped: 'skin' },
@@ -398,7 +444,18 @@ function connectSocket() {
   socket.on('killfeed', (k) => addKillfeed(k));
   socket.on('youGotKill', (k) => {
     showKillBanner(k.victim); playTone(990, 0.12, 0.09, 'triangle');
+    $('killInfo').textContent = '💀 ' + k.kills;
     setTimeout(() => playTone(1320, 0.16, 0.09, 'triangle'), 90);
+  });
+  socket.on('vbucks', (d) => {
+    if (currentUser) currentUser.vbucks = d.total;
+    $('lobbyVbucks').textContent = d.total;
+    showVbToast(d.amount);
+  });
+  socket.on('mobDied', (m) => {
+    const e = G.mobs.get(m.id);
+    if (e) { G.scene && G.scene.remove(e.mesh); G.mobs.delete(m.id); }
+    if (G.particles) G.particles.burst(new THREE.Vector3(m.x, m.y + 0.8, m.z), 0xff5e5e, 22, 6, 0.7, -4);
   });
   socket.on('notice', (n) => showNotice(n.msg));
   socket.on('needReload', () => showNotice('Press R to reload!'));
@@ -418,7 +475,7 @@ const G = {
   active: false, ended: false, won: false, mode: 'bus', // bus | skydiving | ground
   scene: null, camera: null, renderer: null, world: null, data: null, myId: null, self: null,
   pos: new THREE.Vector3(0, 240, 0), velY: 0, yaw: 0, pitch: 0, onGround: false, gliding: false,
-  remotes: new Map(), loot: new Map(), structures: new Map(), tracers: [],
+  remotes: new Map(), loot: new Map(), structures: new Map(), tracers: [], mobs: new Map(),
   keys: {}, mouseDown: false, clicked: false, lastShot: 0, lastMoveSend: 0, lastMinimap: 0,
   buildMode: false, buildType: 'wall', buildMat: 'wood', slot: 0, swingAt: 0,
   storm: { cx: 0, cz: 0, radius: 1900, timer: 0, state: 'idle' }, aliveCount: 24, busPos: { x: -1900, y: 230, z: 0 },
@@ -790,6 +847,9 @@ function updatePollen(t) {
 
 function startMatch(data) {
   stopMenuScene();
+  for (const e of G.mobs.values()) if (G.scene) G.scene.remove(e.mesh);
+  G.mobs.clear();
+  $('killInfo').textContent = '💀 0';
   document.body.classList.remove('scoping');
   show('loadingScreen');
   $('loadingFill').style.width = '35%'; $('loadingText').textContent = 'Building island (4000 × 4000)…';
@@ -901,7 +961,7 @@ function makeGunModel(weaponId) {
     add(new THREE.BoxGeometry(0.85, 0.11, 0.11), accent, 0, 0.22, -0.05);
     return grp;
   }
-  const L = { pistol: 0.42, smg: 0.58, ar: 0.82, shotgun: 0.88, sniper: 1.12, lmg: 1.0 }[weaponId] || 0.7;
+  const L = { pistol: 0.42, smg: 0.58, ar: 0.82, shotgun: 0.88, sniper: 1.12, lmg: 1.0, burst: 0.8, revolver: 0.5, pump: 0.9, dmr: 1.05 }[weaponId] || 0.7;
   add(new THREE.BoxGeometry(0.13, 0.2, L), dark, 0, 0, 0);
   add(new THREE.CylinderGeometry(0.032, 0.032, 0.34), accent, 0, 0.045, -L / 2 - 0.14, Math.PI / 2);
   add(new THREE.BoxGeometry(0.09, 0.3, 0.12), dark, 0, -0.22, 0.04);
@@ -909,7 +969,50 @@ function makeGunModel(weaponId) {
   if (weaponId === 'sniper') add(new THREE.CylinderGeometry(0.055, 0.055, 0.3), dark, 0, 0.2, -0.08, Math.PI / 2);
   if (weaponId === 'shotgun') add(new THREE.CylinderGeometry(0.045, 0.045, 0.5), accent, 0, -0.06, -L / 2 + 0.1, Math.PI / 2);
   if (weaponId === 'lmg') add(new THREE.BoxGeometry(0.16, 0.22, 0.3), dark, 0, -0.18, -0.16);
+  if (weaponId === 'burst') { add(new THREE.BoxGeometry(0.07, 0.07, 0.5), accent, 0, 0.18, -0.05); add(new THREE.CylinderGeometry(0.045, 0.045, 0.16), dark, 0, 0.045, -L / 2 - 0.2, Math.PI / 2); }
+  if (weaponId === 'revolver') { const drum = add(new THREE.CylinderGeometry(0.11, 0.11, 0.14), accent, 0, -0.02, 0.05); drum.rotation.x = Math.PI / 2; add(new THREE.BoxGeometry(0.08, 0.1, 0.22), dark, 0, 0.14, -0.18); }
+  if (weaponId === 'pump') { add(new THREE.CylinderGeometry(0.055, 0.055, 0.3), new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.85 }), 0, -0.09, -L / 2 + 0.22, Math.PI / 2); add(new THREE.BoxGeometry(0.15, 0.24, L * 0.7), dark, 0, 0.02, 0.05); }
+  if (weaponId === 'dmr') { add(new THREE.CylinderGeometry(0.05, 0.05, 0.26), dark, 0, 0.19, -0.12, Math.PI / 2); add(new THREE.BoxGeometry(0.07, 0.34, 0.1), dark, 0, -0.26, -0.02); }
   return grp;
+}
+const MOB_MAXHP = { boar: 70, stalker: 120 };
+function makeMobModel(kind) {
+  const stalker = kind === 'stalker';
+  const g = new THREE.Group();
+  const anim = new THREE.Group(); g.add(anim); g.userData.anim = anim;
+  const fur = new THREE.MeshStandardMaterial({ color: stalker ? 0x2e2838 : 0x6e4a33, roughness: 0.95, flatShading: true });
+  const dark = new THREE.MeshStandardMaterial({ color: stalker ? 0x1b1724 : 0x4c3423, roughness: 1 });
+  const put = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; anim.add(m); return m; };
+  put(new THREE.BoxGeometry(0.85, 0.8, 1.55), fur, 0, 0.82, 0);                    // body
+  put(new THREE.BoxGeometry(0.55, 0.5, 0.6), fur, 0, 0.95, 0.95);                  // head
+  put(new THREE.BoxGeometry(0.32, 0.26, 0.3), dark, 0, 0.85, 1.32);                // snout
+  const eyeM = new THREE.MeshStandardMaterial({ color: 0x180b0b, emissive: stalker ? 0xff2233 : 0x000000, emissiveIntensity: stalker ? 2.2 : 0 });
+  put(new THREE.SphereGeometry(0.06, 8, 6), eyeM, 0.18, 1.05, 1.22);
+  put(new THREE.SphereGeometry(0.06, 8, 6), eyeM, -0.18, 1.05, 1.22);
+  if (stalker) {
+    for (let i = 0; i < 4; i++) { const sp = put(new THREE.ConeGeometry(0.11, 0.42, 5), dark, 0, 1.32, 0.45 - i * 0.32); sp.rotation.x = -0.35; }
+    put(new THREE.ConeGeometry(0.09, 0.3, 5), dark, 0.2, 1.3, 0.9); put(new THREE.ConeGeometry(0.09, 0.3, 5), dark, -0.2, 1.3, 0.9); // ears/horns
+  } else {
+    const tuskM = new THREE.MeshStandardMaterial({ color: 0xf2ead8, roughness: 0.6 });
+    const t1 = put(new THREE.ConeGeometry(0.045, 0.22, 5), tuskM, 0.14, 0.78, 1.42); t1.rotation.x = 0.7;
+    const t2 = put(new THREE.ConeGeometry(0.045, 0.22, 5), tuskM, -0.14, 0.78, 1.42); t2.rotation.x = 0.7;
+    put(new THREE.ConeGeometry(0.08, 0.24, 5), dark, 0.22, 1.28, 0.82); put(new THREE.ConeGeometry(0.08, 0.24, 5), dark, -0.22, 1.28, 0.82);
+  }
+  g.userData.legs = [];
+  for (const [lx, lz] of [[0.28, 0.55], [-0.28, 0.55], [0.28, -0.55], [-0.28, -0.55]]) {
+    const leg = new THREE.Group(); leg.position.set(lx, 0.62, lz);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.07, 0.62, 6), dark); m.position.y = -0.31; m.castShadow = true;
+    leg.add(m); anim.add(leg); g.userData.legs.push(leg);
+  }
+  const tail = put(new THREE.CylinderGeometry(0.035, 0.02, 0.5, 5), dark, 0, 1.05, -0.85); tail.rotation.x = 0.8;
+  // hp bar (shown when hurt)
+  const hpBar = new THREE.Group(); hpBar.position.y = 1.95;
+  const bg = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.11, 0.02), new THREE.MeshBasicMaterial({ color: 0x14161c }));
+  const fg = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.075, 0.03), new THREE.MeshBasicMaterial({ color: 0x7ee06e }));
+  fg.position.z = 0.005; hpBar.add(bg, fg); hpBar.visible = false; g.add(hpBar);
+  g.userData.hpBar = hpBar; g.userData.hpFg = fg; g.userData.phase = Math.random() * 6;
+  g.scale.setScalar(stalker ? 1.3 : 1);
+  return g;
 }
 function makeCharacter(colorHex, username, opts = {}) {
   const cDef = characterDef(opts.character);
@@ -1233,6 +1336,23 @@ function onSnapshot(snap) {
   for (const [id, r] of G.remotes) {
     if (!seen.has(id)) { G.scene.remove(r.mesh); G.remotes.delete(id); }
   }
+  // wild mobs (PvE)
+  const seenMobs = new Set();
+  for (const m of (snap.mobs || [])) {
+    seenMobs.add(m.id);
+    let e = G.mobs.get(m.id);
+    if (!e) {
+      const mesh = makeMobModel(m.k);
+      mesh.position.set(m.x, m.y, m.z);
+      G.scene.add(mesh);
+      e = { mesh, target: new THREE.Vector3(m.x, m.y, m.z), yaw: m.yaw, kind: m.k, hp: m.hp, phase: Math.random() * 6 };
+      G.mobs.set(m.id, e);
+    }
+    e.target.set(m.x, m.y, m.z); e.yaw = m.yaw; e.hp = m.hp;
+  }
+  for (const [id, e] of G.mobs) {
+    if (!seenMobs.has(id)) { G.scene.remove(e.mesh); G.mobs.delete(id); }
+  }
 }
 
 // ---------------- tracers ----------------
@@ -1280,6 +1400,7 @@ function spawnTracer(t) {
 function groundAt(x, z) {
   let g = terrainHeight(x, z);
   if (G.world) for (const c of G.world.colliders) {
+    if (c.type === 'tree') continue; // trunks block horizontally, not a floor
     if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) g = Math.max(g, c.maxY);
   }
   for (const { data: s } of G.structures.values()) {
@@ -1981,6 +2102,26 @@ function loop(now) {
       while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
       r.mesh.rotation.y += dy * 0.4;
     }
+  }
+
+  // mobs: interpolation + trot animation + hp bars
+  for (const e of G.mobs.values()) {
+    const u = e.mesh.userData;
+    const before = e.mesh.position.clone();
+    e.mesh.position.lerp(e.target, 0.35);
+    const moved = e.mesh.position.distanceTo(before);
+    u.phase += dt * (moved > 0.02 ? 11 : 2.5);
+    const amp = moved > 0.02 ? 0.65 : 0.08;
+    u.legs.forEach((leg, li) => { leg.rotation.x = Math.sin(u.phase + (li % 2) * Math.PI) * amp; });
+    let dy = (e.yaw || 0) - e.mesh.rotation.y;
+    while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    e.mesh.rotation.y += dy * 0.35;
+    const max = e.kind === 'stalker' ? 120 : 70;
+    const f = Math.max(0, e.hp / max);
+    u.hpFg.scale.x = Math.max(0.001, f);
+    u.hpFg.position.x = -(1 - f) * 0.5;
+    u.hpBar.visible = e.hp < max;
+    u.anim.position.y = Math.abs(Math.sin(u.phase)) * (moved > 0.02 ? 0.06 : 0.015);
   }
 
   // tracer bolts fade (pooled)

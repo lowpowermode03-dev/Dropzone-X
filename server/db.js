@@ -113,6 +113,8 @@ const COSMETIC_KINDS = {
 // Backfill cosmetics fields for accounts created before characters/armor existed
 function ensureCosmetics(u) {
   if (!u) return u;
+  if (u.dailyLast === undefined) u.dailyLast = 0;
+  if (u.dailyStreak === undefined) u.dailyStreak = 0;
   if (u.guest === undefined && u.username && u.username.startsWith('guest_')) u.guest = true; // legacy guests
   if (!Array.isArray(u.ownedSkins) || !u.ownedSkins.length) u.ownedSkins = ['default'];
   if (!SKINS.find(s => s.id === u.skin)) u.skin = 'default';
@@ -142,6 +144,7 @@ async function register(username, password, email, opts = {}) {
     level: 1, xp: 0, vbucks: 500, skin: 'default', ownedSkins: ['default'],
     character: 'recruit', ownedCharacters: ['recruit'], armor: 'standard', ownedArmors: ['standard'],
     guest: !!opts.guest, // guest = noob account: plays instantly, but no leveling / XP / V-Bucks progression
+    dailyLast: 0, dailyStreak: 0,
   };
   users.push(user);
   saveUsers();
@@ -164,6 +167,8 @@ function publicUser(u) {
     stats: u.stats, level: u.level, xp: u.xp, vbucks: u.vbucks, skin: u.skin, ownedSkins: u.ownedSkins,
     character: u.character, ownedCharacters: u.ownedCharacters, armor: u.armor, ownedArmors: u.ownedArmors,
     guest: !!u.guest,
+    xpNeed: u.level * 1000,
+    daily: dailyStatus(u),
   };
 }
 
@@ -176,6 +181,56 @@ function updateUser(id, patch) {
   Object.assign(u, patch);
   saveUsers();
   return publicUser(u);
+}
+
+// XP + level engine: level n -> n+1 needs n*1000 XP. +100 V-Bucks per level-up.
+function applyXp(u, amount) {
+  let levels = 0;
+  u.xp += amount;
+  while (u.xp >= u.level * 1000) { u.xp -= u.level * 1000; u.level += 1; u.vbucks += 100; levels += 1; }
+  return levels;
+}
+
+// ---------- daily reward (modest on purpose) ----------
+// Base 40 V-Bucks + 60 XP; streak adds +5/+5 per day, capped (+25 VB / +40 XP).
+const DAY_MS = 86400000;
+function dailyRewardFor(streak) {
+  return { vbucks: 40 + Math.min(25, (streak - 1) * 5), xp: 60 + Math.min(40, (streak - 1) * 5) };
+}
+function dailyStatus(u) {
+  ensureCosmetics(u);
+  const day = Math.floor(Date.now() / DAY_MS);
+  const lastDay = u.dailyLast ? Math.floor(u.dailyLast / DAY_MS) : -1;
+  const canClaim = !u.guest && lastDay < day;
+  const nextStreak = lastDay === day - 1 ? (u.dailyStreak || 0) + 1 : 1;
+  return {
+    canClaim, guest: !!u.guest,
+    streak: lastDay === day ? (u.dailyStreak || 0) : nextStreak,
+    reward: dailyRewardFor(nextStreak),
+    nextAt: (day + 1) * DAY_MS, // next UTC midnight
+  };
+}
+function claimDaily(userId) {
+  const u = getUserById(userId);
+  if (!u) throw new Error('User not found');
+  if (u.guest) throw new Error('Guest accounts can\'t claim daily rewards — create a free account to earn.');
+  const st = dailyStatus(u);
+  if (!st.canClaim) throw new Error('Daily reward already claimed — come back tomorrow.');
+  u.dailyLast = Date.now();
+  u.dailyStreak = st.streak;
+  u.vbucks += st.reward.vbucks;
+  const levels = applyXp(u, st.reward.xp);
+  saveUsers();
+  return { user: publicUser(u), reward: st.reward, levelsGained: levels };
+}
+
+// +30 V-Bucks per elimination, credited instantly (registered accounts only).
+function awardKill(userId) {
+  const u = getUserById(userId);
+  if (!u || u.guest) return { awarded: 0, total: u ? u.vbucks : 0 };
+  u.vbucks += 30;
+  saveUsers();
+  return { awarded: 30, total: u.vbucks };
 }
 
 function addMatchResult(userId, { placement, kills, damage, won, totalPlayers }) {
@@ -191,9 +246,7 @@ function addMatchResult(userId, { placement, kills, damage, won, totalPlayers })
   // they never level — no XP, no level-ups, no V-Bucks progression.
   if (!u.guest) {
     const xpGain = 50 + kills * 25 + (won ? 200 : 0) + Math.max(0, 20 - placement) * 5;
-    u.xp += xpGain;
-    const need = u.level * 1000;
-    if (u.xp >= need) { u.xp -= need; u.level += 1; u.vbucks += 100; }
+    applyXp(u, xpGain);
     if (won) u.vbucks += 50;
   }
   saveUsers();
@@ -241,4 +294,4 @@ function leaderboard(limit = 20) {
     .map(u => ({ username: u.username, level: u.level, wins: u.stats.wins, kills: u.stats.kills, matches: u.stats.matches, kd: u.stats.matches ? (u.stats.kills / u.stats.matches).toFixed(2) : '0.00' }));
 }
 
-module.exports = { register, login, publicUser, getUserById, getUserByUsername, updateUser, addMatchResult, buySkin, buyCosmetic, equipCosmetic, leaderboard, init, isSupabase, SKINS, CHARACTERS, ARMORS, ENEMY_CHARACTERS, ENEMY_ARMORS, ENEMY_ROSTER };
+module.exports = { register, login, publicUser, getUserById, getUserByUsername, updateUser, addMatchResult, buySkin, buyCosmetic, equipCosmetic, leaderboard, init, isSupabase, claimDaily, dailyStatus, awardKill, SKINS, CHARACTERS, ARMORS, ENEMY_CHARACTERS, ENEMY_ARMORS, ENEMY_ROSTER };

@@ -64,6 +64,11 @@ app.post('/api/guest', async (req, res) => {
 const COSMETICS_META = () => ({ skins: db.SKINS, characters: db.CHARACTERS, armors: db.ARMORS, enemyCharacters: db.ENEMY_CHARACTERS, enemyArmors: db.ENEMY_ARMORS });
 
 app.get('/api/me', authMiddleware, (req, res) => res.json({ user: db.publicUser(req.user) }));
+app.get('/api/daily', authMiddleware, (req, res) => res.json({ daily: db.dailyStatus(req.user) }));
+app.post('/api/daily/claim', authMiddleware, (req, res) => {
+  try { res.json(db.claimDaily(req.user.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.get('/api/leaderboard', (req, res) => res.json({ leaderboard: db.leaderboard(20), ...COSMETICS_META() }));
 app.get('/api/skins', (req, res) => res.json({ skins: db.SKINS }));
 
