@@ -1,15 +1,35 @@
 // Simple JSON-file user DB (no native deps). Swap for SQLite/Postgres in production.
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const bcrypt = require('bcryptjs');
 const sb = require('./supabase');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// Pick the first writable data directory. Serverless platforms (Vercel)
+// have a read-only project filesystem — only the OS temp dir is writable —
+// so probe instead of crashing the whole API on the first write.
+function pickDataDir() {
+  const candidates = [];
+  if (process.env.DROPZONE_DATA_DIR) candidates.push(process.env.DROPZONE_DATA_DIR);
+  candidates.push(path.join(__dirname, '..', 'data'));
+  candidates.push(path.join(os.tmpdir(), 'dropzone-x-data'));
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const probe = path.join(dir, '.write-probe');
+      fs.writeFileSync(probe, 'ok');
+      fs.unlinkSync(probe);
+      return dir;
+    } catch { /* read-only — try the next candidate */ }
+  }
+  return candidates[candidates.length - 1];
+}
+const DATA_DIR = pickDataDir();
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const MATCHES_FILE = path.join(DATA_DIR, 'matches.json');
 
 function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* persistence unavailable */ }
 }
 function readJson(file, fallback) {
   ensureDir();
@@ -18,9 +38,15 @@ function readJson(file, fallback) {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch { return fallback; }
 }
+let writeWarned = false;
 function writeJson(file, data) {
-  ensureDir();
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  // Never let a persistence failure kill a request (ephemeral hosts).
+  try {
+    ensureDir();
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    if (!writeWarned) { writeWarned = true; console.error('[db] Disk persistence unavailable (' + (e.code || e.message) + ') — running ephemeral'); }
+  }
 }
 
 let users = readJson(USERS_FILE, []);

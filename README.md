@@ -36,10 +36,15 @@ Dropzone X can store **everything** in Supabase Postgres: accounts, stats, level
 
 ## ▲ Deploy on Vercel
 
+> Guest play and registration work on Vercel with **zero configuration**
+> (the data layer detects the read-only filesystem and falls back to the
+> temp dir). Accounts are then ephemeral per serverless instance, so set
+> the Supabase env vars below for real persistence.
+
 The repo is Vercel-ready (`vercel.json` + `api/index.js` serverless entry; the same Express app also runs long-lived via `npm start`).
 
 1. Go to [vercel.com](https://vercel.com) → **Add New → Project** → import this GitHub repo. Framework preset: **Other**. No build command needed.
-2. In **Settings → Environment Variables**, add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a strong `JWT_SECRET` (Supabase is **required** on Vercel — serverless filesystems are ephemeral, so local JSON accounts can't persist there).
+2. In **Settings → Environment Variables**, add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a strong `JWT_SECRET` (recommended — without Supabase, accounts live in the temp dir and are ephemeral per instance).
 3. **Deploy**. Your homepage, accounts, shop, leaderboard and stats all run from Vercel + Supabase.
 
 > ⚠️ Honest note on realtime: Vercel functions are short-lived and stateless, so Socket.IO match rooms (which live in server memory) can't hold 24-player matches there reliably. For full multiplayer matches, run the same code on a persistent host — Render / Railway / Fly / a VPS — with `npm start` and the same env vars. A common setup: Vercel serves the site + API, and the game server runs on Railway.
