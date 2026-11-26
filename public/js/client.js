@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS, RIVERS, riverAt } from './world.js';
 import { loadGLB } from './gltf.js';
+import { SoloSocket } from './solo.js';
 
 const $ = (id) => document.getElementById(id);
 const RARITY_COLORS = ['#b1b1b1', '#60aa3c', '#4d8fd1', '#b04dd1', '#e8a33d'];
@@ -399,19 +400,52 @@ function gameServerUrl() {
 function connectSocket() {
   if (socket) return;
   const srv = gameServerUrl();
-  socket = srv ? io(srv, { auth: { token } }) : io({ auth: { token } });
-  socket.on('connect_error', () => {
-    const el = $('queuePlayers');
-    if (el && !socket.connected) el.textContent = '⚠️ Cannot reach the game server — live matches need the persistent game server (Render/Railway running this repo). Site & accounts still work.';
+  if (srv) {
+    // Explicit dedicated game server (?server= / saved) — always real Socket.IO.
+    socket = io(srv, { auth: { token } });
+    wireSocket(socket);
+    socket.on('connect_error', () => {
+      const el = $('queuePlayers');
+      if (el && !socket.connected) el.textContent = '⚠️ Cannot reach the game server at ' + srv + ' — check it is running. Site & accounts still work.';
+    });
+    return;
+  }
+  if (typeof io === 'undefined') { startSoloSocket(); return; } // socket.io client didn't load (serverless host)
+  // Same-origin: a long-lived server (npm start / Render serving this page)
+  // answers the handshake. Serverless hosts (Vercel) can't hold Socket.IO
+  // rooms, so probe briefly and fall back to Vercel Play instead of spinning.
+  const probe = io({ auth: { token }, timeout: 4500, reconnection: false });
+  let settled = false;
+  probe.on('connect', () => { if (!settled) { settled = true; socket = probe; wireSocket(socket); } });
+  probe.on('connect_error', () => {
+    if (settled) return;
+    settled = true;
+    try { probe.close(); } catch { /* noop */ }
+    startSoloSocket();
   });
-  socket.on('welcome', (d) => { META = d.meta; indexCosmetics(d.meta); });
-  socket.on('chat', (m) => addChat(m.user, m.text));
-  socket.on('lobbyUpdate', (d) => { $('queuePlayers').textContent = `Players ready: ${d.players.map(p => p.username).join(', ') || '…'} — match starts soon, bots will fill the lobby`; });
-  socket.on('matchStart', (data) => startMatch(data));
-  socket.on('snapshot', (snap) => { if (G.active) onSnapshot(snap); });
-  socket.on('selfUpdate', (s) => { G.self = s; renderInventory(); });
-  socket.on('ammoUpdate', (s) => { G.self = s; renderInventory(); });
-  socket.on('lootUpdate', (u) => {
+}
+
+// Vercel Play: no game server needed — live lobby (presence + chat) via
+// Supabase Realtime, bot-filled matches simulated in this tab, results saved
+// through the REST API. See public/js/solo.js.
+function startSoloSocket() {
+  socket = new SoloSocket({ token, user: currentUser, onUserRefresh: () => refreshLobby() });
+  wireSocket(socket);
+  setTimeout(() => {
+    showNotice('⚡ Vercel Play — no game server needed: live lobby + bot-filled matches', '#1d4d2b');
+    addChat('Dropzone X', '⚡ Vercel Play is on: matches run right in your browser (bots fill the lobby), chat & players online are live, and your XP/V-Bucks are saved.');
+  }, 600);
+}
+
+function wireSocket(s) {
+  s.on('welcome', (d) => { META = d.meta; indexCosmetics(d.meta); });
+  s.on('chat', (m) => addChat(m.user, m.text));
+  s.on('lobbyUpdate', (d) => { $('queuePlayers').textContent = `Players ready: ${d.players.map(p => p.username).join(', ') || '…'} — match starts soon, bots will fill the lobby`; });
+  s.on('matchStart', (data) => startMatch(data));
+  s.on('snapshot', (snap) => { if (G.active) onSnapshot(snap); });
+  s.on('selfUpdate', (s) => { G.self = s; renderInventory(); });
+  s.on('ammoUpdate', (s) => { G.self = s; renderInventory(); });
+  s.on('lootUpdate', (u) => {
     if (!G.active) return;
     (u.removed || []).forEach(id => {
       const grp = G.loot.get(id);
@@ -420,23 +454,23 @@ function connectSocket() {
     });
     (u.added || []).forEach(addLootMesh);
   });
-  socket.on('structurePlaced', (s) => { if (G.active) { addStructureMesh(s); if (G.particles) G.particles.burst(new THREE.Vector3(s.x, s.y + 1, s.z), 0x9adcff, 10, 4, 0.4, -2); } });
-  socket.on('structureRemoved', (d) => { if (G.active) removeStructureMesh(d.id); });
-  socket.on('nodeGone', (d) => { if (G.world) hideNode(G.world, G.data, d.type, d.index); });
-  socket.on('nodeHit', () => { if (G.active && G.particles) { const f = new THREE.Vector3(); G.camera.getWorldDirection(f); G.particles.burst(G.pos.clone().addScaledVector(f, 3).setY(G.pos.y + 1.2), 0xa9743a, 7, 4, 0.4, -6); } });
-  socket.on('playerDied', (d) => {
+  s.on('structurePlaced', (s) => { if (G.active) { addStructureMesh(s); if (G.particles) G.particles.burst(new THREE.Vector3(s.x, s.y + 1, s.z), 0x9adcff, 10, 4, 0.4, -2); } });
+  s.on('structureRemoved', (d) => { if (G.active) removeStructureMesh(d.id); });
+  s.on('nodeGone', (d) => { if (G.world) hideNode(G.world, G.data, d.type, d.index); });
+  s.on('nodeHit', () => { if (G.active && G.particles) { const f = new THREE.Vector3(); G.camera.getWorldDirection(f); G.particles.burst(G.pos.clone().addScaledVector(f, 3).setY(G.pos.y + 1.2), 0xa9743a, 7, 4, 0.4, -6); } });
+  s.on('playerDied', (d) => {
     if (!G.active) return;
     const r = G.remotes.get(d.id);
     if (r && G.particles) G.particles.burst(r.mesh.position.clone().setY(r.mesh.position.y + 1.4), 0xff5e5e, 42, 9, 0.9, -4);
     if (HAS_TOUCH && navigator.vibrate && d.id === G.myId) navigator.vibrate(120);
   });
-  socket.on('tracer', (t) => { if (G.active) spawnTracer(t); });
-  socket.on('hitmarker', (h) => {
+  s.on('tracer', (t) => { if (G.active) spawnTracer(t); });
+  s.on('hitmarker', (h) => {
     flashHitmarker(h); spawnDamageNum(h);
     playTone(h.headshot ? 1250 : 720, 0.05, 0.06);
     if (HAS_TOUCH && navigator.vibrate) navigator.vibrate(12);
   });
-  socket.on('youTookDamage', (d) => {
+  s.on('youTookDamage', (d) => {
     const v = $('damageVignette'); v.style.opacity = 1; setTimeout(() => v.style.opacity = 0, 170);
     G.camShake = Math.min(0.5, G.camShake + 0.16);
     playNoise(0.05, 500, 0.08);
@@ -452,33 +486,33 @@ function connectSocket() {
       el._t = setTimeout(() => el.style.opacity = 0, 650);
     }
   });
-  socket.on('killfeed', (k) => addKillfeed(k));
-  socket.on('youGotKill', (k) => {
+  s.on('killfeed', (k) => addKillfeed(k));
+  s.on('youGotKill', (k) => {
     showKillBanner(k.victim); playTone(990, 0.12, 0.09, 'triangle');
     $('killInfo').textContent = '💀 ' + k.kills;
     setTimeout(() => playTone(1320, 0.16, 0.09, 'triangle'), 90);
   });
-  socket.on('vbucks', (d) => {
+  s.on('vbucks', (d) => {
     if (currentUser) currentUser.vbucks = d.total;
     $('lobbyVbucks').textContent = d.total;
     showVbToast(d.amount);
   });
-  socket.on('mobDied', (m) => {
+  s.on('mobDied', (m) => {
     const e = G.mobs.get(m.id);
     if (e) { G.scene && G.scene.remove(e.mesh); G.mobs.delete(m.id); }
     if (G.particles) G.particles.burst(new THREE.Vector3(m.x, m.y + 0.8, m.z), 0xff5e5e, 22, 6, 0.7, -4);
   });
-  socket.on('notice', (n) => showNotice(n.msg));
-  socket.on('needReload', () => showNotice('Press R to reload!'));
-  socket.on('usingItem', (u) => startUseBar(u.ms));
-  socket.on('youJumped', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); tryLock(); });
-  socket.on('forceJump', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); });
-  socket.on('eliminated', (d) => endMatch(false, d));
-  socket.on('victory', (d) => { G.won = true; });
-  socket.on('matchEnd', (d) => { if (G.active) endMatch(d.winnerId === G.myId || G.won, { placement: d.winnerId === G.myId ? 1 : (G.myPlacement || 2), winner: d.winner }); });
-  socket.on('roomClosed', () => { if (G.active && !G.ended) location.reload(); });
-  socket.on('stormWarning', () => showNotice('🌩️ Storm shrinking!', '#5e35b1'));
-  socket.on('disconnect', () => { if (G.active) showNotice('Disconnected from server', '#7d1d1d'); });
+  s.on('notice', (n) => showNotice(n.msg));
+  s.on('needReload', () => showNotice('Press R to reload!'));
+  s.on('usingItem', (u) => startUseBar(u.ms));
+  s.on('youJumped', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); tryLock(); });
+  s.on('forceJump', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); });
+  s.on('eliminated', (d) => endMatch(false, d));
+  s.on('victory', (d) => { G.won = true; });
+  s.on('matchEnd', (d) => { if (G.active) endMatch(d.winnerId === G.myId || G.won, { placement: d.winnerId === G.myId ? 1 : (G.myPlacement || 2), winner: d.winner }); });
+  s.on('roomClosed', () => { if (G.active && !G.ended) location.reload(); });
+  s.on('stormWarning', () => showNotice('🌩️ Storm shrinking!', '#5e35b1'));
+  s.on('disconnect', () => { if (G.active) showNotice('Disconnected from server', '#7d1d1d'); });
 }
 
 // ---------------- game state ----------------

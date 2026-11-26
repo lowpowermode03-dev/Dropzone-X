@@ -92,6 +92,41 @@ app.get('/api/meta', (req, res) => res.json({ weapons: WEAPONS, items: ITEMS, ra
 // Static island data so the menu/lobby can render the 3D world backdrop
 app.get('/api/world', (req, res) => res.json({ pois: POIS, buildings: BUILDINGS, trees: TREES, rocks: ROCKS }));
 
+// Public client config for "Vercel Play": when no persistent game server is
+// reachable, the browser runs bot-filled matches locally and uses Supabase
+// Realtime for the live lobby (presence + chat). The anon/publishable key is
+// safe to expose — it only grants access to public Realtime channels.
+app.get('/api/public-config', (req, res) => res.json({
+  supabaseUrl: process.env.SUPABASE_URL || null,
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || null,
+  serverless: !!process.env.VERCEL,
+}));
+
+// Vercel Play match results. The browser simulates the match (there is no
+// long-lived server on Vercel), so results are client-reported: values are
+// hard-capped and submissions are rate-limited. Registered accounts then get
+// exactly the same rewards a server-hosted match would grant (XP via
+// addMatchResult, +30 V-Bucks per kill via awardKill, +50 win bonus);
+// guests keep basic stats only — no XP/V-Bucks progression, as everywhere.
+const lastResultAt = new Map();
+app.post('/api/match/result', authMiddleware, (req, res) => {
+  const b = req.body || {};
+  const clampInt = (v, lo, hi) => { const n = Math.floor(Number(v)); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
+  const placement = clampInt(b.placement, 1, 64);
+  const kills = clampInt(b.kills, 0, 40);
+  const damage = clampInt(b.damage, 0, 30000);
+  const totalPlayers = clampInt(b.totalPlayers, 2, 64) || 24;
+  if (placement === null || kills === null || damage === null) return res.status(400).json({ error: 'Invalid match result' });
+  const now = Date.now();
+  if (now - (lastResultAt.get(req.user.id) || 0) < 40000) return res.status(429).json({ error: 'Match result submitted too soon after the previous one' });
+  lastResultAt.set(req.user.id, now);
+  const won = !!b.won && placement === 1;
+  db.addMatchResult(req.user.id, { placement, kills, damage, won, totalPlayers });
+  const fresh = db.getUserById(req.user.id);
+  if (fresh && !fresh.guest) for (let i = 0; i < kills; i++) db.awardKill(req.user.id);
+  res.json({ saved: true, user: db.publicUser(db.getUserById(req.user.id)) });
+});
+
 // ---------- Socket.IO ----------
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
@@ -167,7 +202,7 @@ io.on('connection', (socket) => {
   });
 });
 
-app.get('/api/health', (req, res) => res.json({ ok: true, backend: db.isSupabase() ? 'supabase' : 'json' }));
+app.get('/api/health', (req, res) => res.json({ ok: true, backend: db.isSupabase() ? 'supabase' : 'json', serverless: !!process.env.VERCEL }));
 
 // Long-lived mode (npm start / Render / Railway / your PC): listen on a port.
 // Serverless mode (Vercel): the platform imports the exported Express app.
