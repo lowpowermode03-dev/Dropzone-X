@@ -44,19 +44,24 @@ Dropzone X can store **everything** in Supabase Postgres: accounts, stats, level
 The repo is Vercel-ready (`vercel.json` + `api/index.js` serverless entry; the same Express app also runs long-lived via `npm start`).
 
 1. Go to [vercel.com](https://vercel.com) → **Add New → Project** → import this GitHub repo. Framework preset: **Other**. No build command needed.
-2. In **Settings → Environment Variables**, add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a strong `JWT_SECRET` (recommended — without Supabase, accounts live in the temp dir and are ephemeral per instance).
-3. **Deploy**. Your homepage, accounts, shop, leaderboard and stats all run from Vercel + Supabase.
+2. In **Settings → Environment Variables**, add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY` (the public/publishable key) and a strong `JWT_SECRET` (recommended — without Supabase, accounts live in the temp dir and are ephemeral per instance).
+3. **Deploy**. Your homepage, accounts, shop, leaderboard and stats all run from Vercel + Supabase — and so do matches (see Vercel Play below).
 
-> ⚠️ Honest note on realtime: Vercel functions are short-lived and stateless, so Socket.IO match rooms (which live in server memory) can't hold 24-player matches there reliably. For full multiplayer matches, run the same code on a persistent host — Render / Railway / Fly / a VPS — with `npm start` and the same env vars. A common setup: Vercel serves the site + API, and the game server runs on Railway.
+### ⚡ Vercel Play — matches with no game server at all
+
+Vercel functions are short-lived and stateless, so Socket.IO match rooms (which live in server memory) can't run there. Dropzone X therefore ships a second transport that the client picks automatically when no game server answers:
+
+- **Live lobby** — Supabase Realtime presence + chat: you see which real players are online and can talk to them before dropping.
+- **Bot-filled matches, simulated in your browser** — `public/js/solo.js` is a port of the authoritative room (Battle Bus, 23 tiered bots, wild mobs, loot, storm, building, harvesting) speaking the exact same event protocol, so the full game renders identically.
+- **Real progression** — at match end the client posts the result to `POST /api/match/result` (JWT-guarded, hard-capped, rate-limited), which grants the same XP, +30 V-Bucks per kill and +50 win bonus a hosted match would. Guests keep basic stats only — no XP/V-Bucks progression, as everywhere.
+
+Trade-offs, honestly: opponents in a Vercel Play match are bots, not other humans, and results are client-reported (caps + rate limits keep farming pointless). For real human-vs-human matches, run the same code on a persistent host — Render / Railway / Fly / a VPS — with `npm start`; the client prefers a real Socket.IO server whenever one is reachable, and `?server=<url>` still forces a specific game server.
 
 ### "I'm not running npm start" — playing without a terminal
 
 - **This repo's hosted preview**: nothing to run — the server is already up.
-- **Vercel-only deploy**: homepage, accounts, shop and stats work, but the match queue can't connect (see the note above). Fix it without touching a terminal:
-  1. Go to [render.com](https://render.com) → **New → Blueprint** → pick this repo (it reads `render.yaml`) → set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` when asked → **Deploy**. (Free tier sleeps when idle; the first match of the day takes ~30 s to wake.)
-  2. Copy your new service URL, e.g. `https://dropzone-x-server.onrender.com`.
-  3. Open your Vercel site once as `https://your-site.vercel.app/?server=https://dropzone-x-server.onrender.com` — the browser remembers the game server from then on.
-  4. Make sure `JWT_SECRET` and the Supabase values are **identical** in Vercel and Render, or the game server will reject website logins.
+- **Vercel-only deploy**: just open the site and press PLAY — Vercel Play (above) handles matches, lobby chat and progression. Nothing else to set up beyond the env vars in step 2.
+- **Optional — real multiplayer matches**: deploy the game server on Render (Blueprint → this repo → set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` → Deploy; free tier sleeps when idle, first match of the day takes ~30 s to wake), then open your Vercel site once as `https://your-site.vercel.app/?server=https://dropzone-x-server.onrender.com` — the browser remembers the game server from then on. Make sure `JWT_SECRET` and the Supabase values are **identical** in Vercel and Render, or the game server will reject website logins.
 
 ## ⚔️ Combat & Progression Update
 
