@@ -445,9 +445,9 @@ export function lootBeamMaterial(colorHex) {
     fragmentShader: `
       uniform float uTime; uniform vec3 uColor; varying vec2 vUv;
       void main(){
-        float pulse = 0.75 + 0.25*sin(uTime*3.2 + vUv.y*16.0);
-        float a = pow(1.0 - vUv.y, 1.4) * 0.5 * pulse + smoothstep(0.0,0.25,vUv.y)*0.10;
-        gl_FragColor = vec4(uColor * 1.4, a);
+        float pulse = 0.85 + 0.15*sin(uTime*3.2 + vUv.y*16.0);
+        float a = pow(1.0 - vUv.y, 1.4) * 0.30 * pulse + smoothstep(0.0,0.25,vUv.y)*0.05;
+        gl_FragColor = vec4(uColor * 1.05, a);
       }`,
   });
 }

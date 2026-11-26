@@ -104,6 +104,8 @@ const CHARACTERS = [
   { id: 'scout', name: 'Viper Scout', desc: 'Lean recon specialist with a hooded stealth rig.', price: 400, suit: '#3f9e63', accent: '#b6ff5e', skinTone: '#c98d64', build: 'slim', headgear: 'hood' },
   { id: 'heavy', name: 'Bulwark Heavy', desc: 'Towering front-liner in a full combat helmet.', price: 1000, suit: '#68707f', accent: '#ffb020', skinTone: '#8a5a3b', build: 'heavy', headgear: 'helmet' },
   { id: 'specter', name: 'Specter Operative', desc: 'Sleek black-ops phantom with a glowing mask.', price: 1600, suit: '#252836', accent: '#8f6bff', skinTone: '#e8b48c', build: 'sleek', headgear: 'mask' },
+  { id: 'operator', name: 'SWAT Operator', desc: 'Ballistic helmet, NVG mount, balaclava and plate carrier — all business.', price: 800, suit: '#26292f', accent: '#ffb020', skinTone: '#c98d64', build: 'heavy', headgear: 'swat' },
+  { id: 'pointman', name: 'Night Pointman', desc: 'Graphite night-ops pointman in a full tactical rig.', price: 1400, suit: '#1d2126', accent: '#37e0ff', skinTone: '#8a5a3b', build: 'sleek', headgear: 'swat' },
 ];
 
 // Equippable armor cosmetics: layered plates/pauldrons/guards rendered over the character
@@ -111,6 +113,7 @@ const ARMORS = [
   { id: 'standard', name: 'Standard Issue', desc: 'Basic chest rig and backpack.', price: 0, plate: '#2a2d38', accent: '#9fb4c8', trim: '#596273', tier: 0 },
   { id: 'vanguard', name: 'Vanguard Armor', desc: 'Pauldrons, plated chest and limb guards.', price: 500, plate: '#37648f', accent: '#ffd23f', trim: '#d7e6f5', tier: 1 },
   { id: 'aegis', name: 'Aegis Warplate', desc: 'Heavy warplate with a glowing power core.', price: 1000, plate: '#7a8794', accent: '#37e0ff', trim: '#f2f6fa', tier: 2 },
+  { id: 'plate_carrier', name: 'Operator Plate Carrier', desc: 'Ceramic plates, mag pouches and comms kit.', price: 900, plate: '#2e3238', accent: '#ffb020', trim: '#111318', tier: 2 },
   { id: 'obsidian', name: 'Obsidian Warplate', desc: 'Blackened plate with blood-red energy trim.', price: 1600, plate: '#171923', accent: '#ff3d5e', trim: '#5c2333', tier: 3 },
   { id: 'solar', name: 'Solar Champion', desc: 'Golden champion plate with a radiant halo.', price: 2200, plate: '#d9b45b', accent: '#fff3b0', trim: '#fff8e1', tier: 3 },
 ];
@@ -121,12 +124,14 @@ const ENEMY_CHARACTERS = [
   { id: 'marauder', name: 'Iron Marauder', suit: '#3f454f', accent: '#ff3d5e', skinTone: '#8a6a4f', build: 'heavy', headgear: 'horns' },
   { id: 'warhound', name: 'Warhound', suit: '#5d4a2f', accent: '#ffd23f', skinTone: '#a87950', build: 'slim', headgear: 'fins' },
   { id: 'reaper', name: 'Void Reaper', suit: '#211d2e', accent: '#b18cff', skinTone: '#6f7d8c', build: 'sleek', headgear: 'reaper' },
+  { id: 'juggernaut', name: 'Dread Juggernaut', suit: '#33272a', accent: '#ff3d5e', skinTone: '#8a6a4f', build: 'heavy', headgear: 'swat' },
 ];
 const ENEMY_ARMORS = [
   { id: 'raider_plate', name: 'Raider Scrap Plate', plate: '#5a3a30', accent: '#ffb020', trim: '#2e2019', tier: 2 },
   { id: 'war_plate', name: 'Marauder Warplate', plate: '#23262d', accent: '#ff3d5e', trim: '#4a2028', tier: 3 },
   { id: 'hound_plate', name: 'Warhound Leathers', plate: '#4c3d28', accent: '#ffd23f', trim: '#2c2115', tier: 1 },
   { id: 'void_plate', name: 'Void Reaper Plate', plate: '#14101f', accent: '#b18cff', trim: '#2c2145', tier: 3 },
+  { id: 'dread_plate', name: 'Dreadnought Plate', plate: '#241d20', accent: '#ff3d5e', trim: '#120d0f', tier: 3 },
 ];
 const ENEMY_ROSTER = ENEMY_CHARACTERS.map((c, i) => ({ character: c.id, armor: ENEMY_ARMORS[i].id, color: c.suit, name: c.name }));
 
