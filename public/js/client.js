@@ -1,6 +1,6 @@
 // FortWorld client: auth, lobby, shop, FPS gameplay, building, HUD.
 import * as THREE from 'three';
-import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS, RIVERS, riverAt } from './world.js';
+import { terrainHeight, createSky, createWater, createStormWall, lootBeamMaterial, buildWorld, hideNode, WATER_Y, structureMaterial, getGlowTexture, MOUNTAINS, RIVERS, riverAt, createGroundController } from './world.js';
 import { loadGLB } from './gltf.js';
 import { SoloSocket } from './solo.js';
 
@@ -505,8 +505,8 @@ function wireSocket(s) {
   s.on('notice', (n) => showNotice(n.msg));
   s.on('needReload', () => showNotice('Press R to reload!'));
   s.on('usingItem', (u) => startUseBar(u.ms));
-  s.on('youJumped', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); tryLock(); });
-  s.on('forceJump', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); });
+  s.on('youJumped', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); document.body.classList.remove('busmode'); tryLock(); });
+  s.on('forceJump', () => { G.mode = 'skydiving'; $('busPrompt').classList.add('hidden'); document.body.classList.remove('busmode'); });
   s.on('eliminated', (d) => endMatch(false, d));
   s.on('victory', (d) => { G.won = true; });
   s.on('matchEnd', (d) => { if (G.active) endMatch(d.winnerId === G.myId || G.won, { placement: d.winnerId === G.myId ? 1 : (G.myPlacement || 2), winner: d.winner }); });
@@ -1443,39 +1443,28 @@ function spawnTracer(t) {
 }
 
 // ---------------- physics helpers ----------------
+// Character controller (world.js): spatial-hash collider broadphase,
+// support-height ground probe with step-up, 50° walk-slope blocking and
+// axis-separated push-out. Rebuilt lazily whenever the world changes.
+let WCTL = null, WCTL_SRC = null;
+function ensureCtl() {
+  if (!G.world) return null;
+  if (WCTL_SRC !== G.world.colliders) {
+    WCTL_SRC = G.world.colliders;
+    WCTL = createGroundController(G.world.colliders, G.structures, terrainHeight);
+  }
+  return WCTL;
+}
 function groundAt(x, z) {
-  let g = terrainHeight(x, z);
-  if (G.world) for (const c of G.world.colliders) {
-    if (c.type === 'tree') continue; // trunks block horizontally, not a floor
-    if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) g = Math.max(g, c.maxY);
-  }
-  for (const { data: s } of G.structures.values()) {
-    if (s.type === 'floor' && Math.abs(x - s.x) < 2.5 && Math.abs(z - s.z) < 2.5) g = Math.max(g, s.y + 0.2);
-    if (s.type === 'ramp') {
-      const dx = x - s.x, dz = z - s.z;
-      const cos = Math.cos(-(s.rotY || 0)), sin = Math.sin(-(s.rotY || 0));
-      const lx = dx * cos - dz * sin, lz = dx * sin + dz * cos;
-      if (Math.abs(lx) < 2.5 && Math.abs(lz) < 3.6) g = Math.max(g, s.y + ((lz + 3.6) / 7.2) * 4.6);
-    }
-  }
-  return g;
+  const c = ensureCtl();
+  return c ? c.groundAt(x, z) : terrainHeight(x, z);
 }
 function horizontalCollide(prev) {
-  if (!G.world) return;
-  const r = 0.65;
-  for (const c of G.world.colliders) {
-    if (G.pos.x > c.minX - r && G.pos.x < c.maxX + r && G.pos.z > c.minZ - r && G.pos.z < c.maxZ + r) {
-      if (G.pos.y < c.maxY - 0.6 && G.pos.y + 1.8 > c.minY) {
-        // push out on smallest axis (only if we weren't already on top)
-        if (prev.y >= c.maxY - 0.6) continue;
-        const pushL = G.pos.x - (c.minX - r), pushR = (c.maxX + r) - G.pos.x;
-        const pushB = G.pos.z - (c.minZ - r), pushF = (c.maxZ + r) - G.pos.z;
-        const m = Math.min(pushL, pushR, pushB, pushF);
-        if (m === pushL) G.pos.x = c.minX - r; else if (m === pushR) G.pos.x = c.maxX + r;
-        else if (m === pushB) G.pos.z = c.minZ - r; else G.pos.z = c.maxZ + r;
-      }
-    }
-  }
+  const c = ensureCtl(); if (!c) return;
+  const v = { x: G.hVel.x, z: G.hVel.y };
+  const res = c.collide(G.pos.x, G.pos.z, G.pos.y, v, 0.65);
+  G.pos.x = res.x; G.pos.z = res.z;
+  G.hVel.x = v.x; G.hVel.y = v.z;
 }
 
 // ---------------- input (shared desktop + touch actions) ----------------
@@ -1868,6 +1857,7 @@ function loop(now) {
     G.pos.y += fallSpeed * dt;
     if (G.pos.y <= ground) {
       G.pos.y = ground; G.mode = 'ground';
+      document.body.classList.remove('busmode'); // never let the bus pill outlive the drop
       // carry dive/glide momentum into the run instead of stopping dead
       const landSpd = G.gliding ? 8 : 3;
       G.gliding = false;
@@ -1943,7 +1933,20 @@ function loop(now) {
     }
     G.pos.x += G.hVel.x * dt;
     G.pos.z += G.hVel.y * dt;
-    const ground = Math.max(terrainG, (G.swimSurf !== undefined ? G.swimSurf : WATER_Y) - 0.45);
+    let ground = Math.max(terrainG, (G.swimSurf !== undefined ? G.swimSurf : WATER_Y) - 0.45);
+    const ctl = G.swimming ? null : ensureCtl();
+    if (ctl) {
+      const sp = G.hVel.length();
+      const sup = ctl.supportAt(G.pos.x, G.pos.z, prev.y, sp > 0.01 ? G.hVel.x / sp : 0, sp > 0.01 ? G.hVel.y / sp : 0, G.onGround);
+      if (sup.blocked) {
+        // slope past the 50° walk limit: the hillside is a wall, roll back
+        G.pos.x = prev.x; G.pos.z = prev.z;
+      } else {
+        // snap down to the support when grounded so descents keep contact
+        if (G.onGround && sup.ground < G.pos.y && G.pos.y - sup.ground <= Math.max(0.9, 12 * dt)) G.pos.y = sup.ground;
+        ground = Math.max(sup.ground, (G.swimSurf !== undefined ? G.swimSurf : WATER_Y) - 0.45);
+      }
+    }
     const wasGround = G.onGround;
     if (G.swimming) {
       G.velY = THREE.MathUtils.clamp((ground - G.pos.y) * 5, -2.6, 2.6);
