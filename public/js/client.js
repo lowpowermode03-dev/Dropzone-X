@@ -456,7 +456,12 @@ function wireSocket(s) {
   });
   s.on('structurePlaced', (s) => { if (G.active) { addStructureMesh(s); if (G.particles) G.particles.burst(new THREE.Vector3(s.x, s.y + 1, s.z), 0x9adcff, 10, 4, 0.4, -2); } });
   s.on('structureRemoved', (d) => { if (G.active) removeStructureMesh(d.id); });
-  s.on('nodeGone', (d) => { if (G.world) hideNode(G.world, G.data, d.type, d.index); });
+  s.on('nodeGone', (d) => {
+    if (G.world) hideNode(G.world, G.data, d.type, d.index);
+    // release the collider too — a harvested tree/rock must not keep blocking
+    // (or holding players up) as an invisible ghost
+    if (G.world) for (const c of G.world.colliders) if (c.type === d.type && c.index === d.index) c.dead = true;
+  });
   s.on('nodeHit', () => { if (G.active && G.particles) { const f = new THREE.Vector3(); G.camera.getWorldDirection(f); G.particles.burst(G.pos.clone().addScaledVector(f, 3).setY(G.pos.y + 1.2), 0xa9743a, 7, 4, 0.4, -6); } });
   s.on('playerDied', (d) => {
     if (!G.active) return;
@@ -938,6 +943,7 @@ function startMatch(data) {
     buildMinimapBase();
     document.body.classList.add('playing', 'busmode');
     G.ads = false; G.vmKick = 0; G.camShake = 0;
+    G.climbing = null; G.climbHinted = false;
     G.hVel.set(0, 0); G.eyeH = 1.62; G.camRoll = 0; G.velY = 0; G.swimming = false;
     $('loadingFill').style.width = '75%'; $('loadingText').textContent = 'Dropping loot & building Battle Bus…';
     // Battle bus
@@ -1554,11 +1560,57 @@ function groundAt(x, z) {
   return c ? c.groundAt(x, z) : terrainHeight(x, z);
 }
 function horizontalCollide(prev) {
-  const c = ensureCtl(); if (!c) return;
+  const c = ensureCtl(); if (!c) return null;
   const v = { x: G.hVel.x, z: G.hVel.y };
   const res = c.collide(G.pos.x, G.pos.z, G.pos.y, v, 0.65);
   G.pos.x = res.x; G.pos.z = res.z;
   G.hVel.x = v.x; G.hVel.y = v.z;
+  return res;
+}
+
+// ---------------- rock climbing ----------------
+// Holding toward a boulder that blocks you climbs its face; the dome support
+// in world.js takes over at the top. Jump leaps off, letting go drops you.
+let climbHintTimer = 0;
+function showHint(text) {
+  const el = $('vbToast'); if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  clearTimeout(climbHintTimer);
+  climbHintTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+}
+function updateClimbing(colRes, wishDir, wishLen, dt) {
+  const centerOf = (rc) => ({ x: (rc.minX + rc.maxX) / 2, z: (rc.minZ + rc.maxZ) / 2, rr: (rc.maxX - rc.minX) / 2 });
+  if (G.climbing) {
+    const rc = G.climbing, c = centerOf(rc);
+    const dx = c.x - G.pos.x, dz = c.z - G.pos.z, distC = Math.hypot(dx, dz) || 0.001;
+    const toward = wishLen > 0.15 && (wishDir.x * dx + wishDir.y * dz) / distC > 0.2;
+    if (rc.dead || !toward || distC > c.rr + 2.6) { G.climbing = null; return; }
+    if (G.keys.Space) { // leap off the face
+      G.climbing = null; G.velY = 8.6; G.onGround = false;
+      G.hVel.x = (-dx / distC) * 4.2; G.hVel.y = (-dz / distC) * 4.2;
+      playNoise(0.05, 700, 0.028);
+      return;
+    }
+    if (G.pos.y >= rc.maxY - 0.04) { // topped out: step onto the dome
+      G.pos.y = rc.maxY; G.velY = 0; G.onGround = true; G.climbing = null;
+      G.hVel.x = (dx / distC) * 3.4; G.hVel.y = (dz / distC) * 3.4;
+      return;
+    }
+    G.velY = 0; G.onGround = false;
+    G.pos.y = Math.min(rc.maxY, G.pos.y + 2.4 * dt); // climb speed
+    G.hVel.x = (dx / distC) * 1.7; G.hVel.y = (dz / distC) * 1.7; // hug the face
+    return;
+  }
+  const rock = colRes && colRes.rock;
+  if (!rock || !G.onGround || wishLen <= 0.15) return;
+  if (rock.maxY - G.pos.y < 0.9) return; // low boulder: just scramble/step on top
+  const c = centerOf(rock);
+  const dx = c.x - G.pos.x, dz = c.z - G.pos.z, distC = Math.hypot(dx, dz) || 0.001;
+  if ((wishDir.x * dx + wishDir.y * dz) / distC < 0.2) return;
+  G.climbing = rock;
+  if (!G.climbHinted) { G.climbHinted = true; showHint('🧗 Climbing! Hold forward — jump to leap off, release to drop'); }
 }
 
 // ---------------- input (shared desktop + touch actions) ----------------
@@ -1963,8 +2015,12 @@ function loop(now) {
     if (move.lengthSq() > 0) { move.normalize(); G.pos.addScaledVector(move, hSpeed * dt); G.yaw = Math.atan2(-move.x, -move.z); }
     else if (G.gliding) { const f = new THREE.Vector3(-Math.sin(G.yaw), 0, -Math.cos(G.yaw)); G.pos.addScaledVector(f, hSpeed * 0.7 * dt); }
     G.pos.y += fallSpeed * dt;
-    if (G.pos.y <= ground) {
-      G.pos.y = ground; G.mode = 'ground';
+    // collide while diving/gliding too — otherwise you spear straight through
+    // tree trunks and building sides and land inside them
+    horizontalCollide();
+    const landGround = groundAt(G.pos.x, G.pos.z);
+    if (G.pos.y <= landGround) {
+      G.pos.y = landGround; G.mode = 'ground';
       document.body.classList.remove('busmode'); // never let the bus pill outlive the drop
       // carry dive/glide momentum into the run instead of stopping dead
       const landSpd = G.gliding ? 8 : 3;
@@ -2061,7 +2117,8 @@ function loop(now) {
       G.pos.y += G.velY * dt;
       G.onGround = Math.abs(G.pos.y - ground) < 0.06;
     } else {
-      G.velY -= (G.velY < 0 ? 33 : 26) * dt; // falls faster than it rises — snappy arcs
+      if (G.climbing) G.velY = 0; // rock climbing drives Y after collision (updateClimbing)
+      else G.velY -= (G.velY < 0 ? 33 : 26) * dt; // falls faster than it rises — snappy arcs
       if (G.velY < -38) G.velY = -38;
       G.pos.y += G.velY * dt;
       if (G.pos.y <= ground) {
@@ -2084,7 +2141,8 @@ function loop(now) {
       G.ads = false; const ab = $('btnAim'); if (ab) ab.classList.remove('on');
       playNoise(0.05, 700, 0.028);
     }
-    horizontalCollide(prev);
+    const colRes = horizontalCollide(prev);
+    if (!G.swimming && !sliding) updateClimbing(colRes, wishDir, wishLen, dt);
     // walls bleed off velocity so you don't stick to them
     if (Math.abs(G.pos.x - prev.x - G.hVel.x * dt) > 0.03) G.hVel.x *= 0.25;
     if (Math.abs(G.pos.z - prev.z - G.hVel.y * dt) > 0.03) G.hVel.y *= 0.25;

@@ -1454,9 +1454,22 @@ export function createGroundController(colliders, structRef, heightsFn) {
   const eachStruct = (fn) => {
     for (const e of structRef.values()) { const s = e && e.data ? e.data : e; if (s) fn(s); }
   };
+  // Rocks are rounded boulders: their walkable surface is a DOME over the
+  // collider footprint (terrain height at the centre at the rim, full height
+  // at the middle). Flat-top support made players hover at centre height
+  // around the edges; the dome also lets players scramble up the shallower
+  // faces and stand naturally anywhere on top.
+  const rockTopAt = (c, x, z) => {
+    const cx = (c.minX + c.maxX) * 0.5, cz = (c.minZ + c.maxZ) * 0.5, rr = (c.maxX - c.minX) * 0.5;
+    const dx = x - cx, dz = z - cz, d2 = (dx * dx + dz * dz) / (rr * rr);
+    if (d2 >= 1) return -Infinity;
+    const base = c.minY + 0.5;
+    return base + (c.maxY - base) * Math.sqrt(1 - d2);
+  };
   const boxTopAt = (c, x, z) => {
     if (x < c.minX - PLAYER_RAD || x > c.maxX + PLAYER_RAD || z < c.minZ - PLAYER_RAD || z > c.maxZ + PLAYER_RAD) return -Infinity;
-    if (c.type === 'tree' || c.type === 'rock') {
+    if (c.type === 'rock') return rockTopAt(c, x, z);
+    if (c.type === 'tree') {
       const cx = (c.minX + c.maxX) * 0.5, cz = (c.minZ + c.maxZ) * 0.5, rr = (c.maxX - c.minX) * 0.5;
       if ((x - cx) * (x - cx) + (z - cz) * (z - cz) > rr * rr) return -Infinity;
     }
@@ -1486,6 +1499,7 @@ export function createGroundController(colliders, structRef, heightsFn) {
     const list = nearby(px, pz);
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      if (c.dead) continue; // harvested: no ghost floors
       if (c.type === 'tree') continue; // trunks block horizontally, not a floor
       const top = boxTopAt(c, px, pz);
       if (top > ground && top <= refY + STEP_UP) ground = top;
@@ -1513,13 +1527,24 @@ export function createGroundController(colliders, structRef, heightsFn) {
     const ox = px, oz = pz;
     let x = px, z = pz;
     let collidedX = false, collidedZ = false;
+    let hitRock = null; // a boulder that blocked us (drives rock climbing)
     const pass = (axis) => {
       const list = nearby(x, z);
       for (let i = 0; i < list.length; i++) {
         const c = list[i];
+        if (c.dead) continue; // harvested: no invisible walls
         const top = c._top === undefined ? c.maxY : c._top;
-        if (top <= footY + STEP_UP) continue;
+        // Steppable tops (buildings, rock domes) hand over to supportAt within
+        // STEP_UP. Trees never support anyone, so they must block at every
+        // height below their top — otherwise falling players sink half a metre
+        // into the trunk before being squirted out sideways.
+        if (c.type === 'tree') { if (top <= footY) continue; }
+        else if (top <= footY + STEP_UP) continue;
         if (c.minY >= headY) continue;
+        if (c.type === 'rock') {
+          const surf = rockTopAt(c, x, z);
+          if (surf > -Infinity && footY + STEP_UP >= surf) continue; // standing on the dome
+        }
         if (x + R < c.minX || x - R > c.maxX || z + R < c.minZ || z - R > c.maxZ) continue;
         const insideX = x > c.minX && x < c.maxX, insideZ = z > c.minZ && z < c.maxZ;
         if (insideX && insideZ) {
@@ -1532,6 +1557,7 @@ export function createGroundController(colliders, structRef, heightsFn) {
             if (dzl < dzr) { z = c.minZ - R; if (vel && vel.z > 0) vel.z = 0; } else { z = c.maxZ + R; if (vel && vel.z < 0) vel.z = 0; }
             collidedZ = true;
           }
+          if (c.type === 'rock') hitRock = c;
         } else {
           const nx = Math.max(c.minX, Math.min(x, c.maxX)), nz = Math.max(c.minZ, Math.min(z, c.maxZ));
           const dx = x - nx, dz = z - nz, d2 = dx * dx + dz * dz;
@@ -1540,13 +1566,14 @@ export function createGroundController(colliders, structRef, heightsFn) {
             if (axis === 'x' && dx !== 0) { x += ux * push; collidedX = true; }
             else if (axis === 'z' && dz !== 0) { z += uz * push; collidedZ = true; }
             else continue;
+            if (c.type === 'rock') hitRock = c;
             if (vel) { const vn = vel.x * ux + vel.z * uz; if (vn < 0) { vel.x -= ux * vn; vel.z -= uz * vn; } }
           }
         }
       }
       eachStruct((s) => {
         if (s.type !== 'wall') return;
-        if (s.y + 5 <= footY + STEP_UP) return;
+        if (s.y + 5 <= footY) return; // wall tops aren't floors either: same anti-sink rule
         const cs = Math.abs(Math.cos(s.rotY || 0)), sn = Math.abs(Math.sin(s.rotY || 0));
         const hw = 2.5 * cs + 0.35 * sn, hd = 2.5 * sn + 0.35 * cs;
         if (x + R < s.x - hw || x - R > s.x + hw || z + R < s.z - hd || z - R > s.z + hd) return;
@@ -1574,8 +1601,10 @@ export function createGroundController(colliders, structRef, heightsFn) {
         }
       });
     };
-    pass('x'); pass('z');
-    return { x, z, collidedX, collidedZ, collided: x !== ox || z !== oz };
+    // Two resolution rounds: a single x/z sweep leaves up to ~0.1 m of corner
+    // penetration at slide speed; the second sweep converges it away.
+    pass('x'); pass('z'); pass('x'); pass('z');
+    return { x, z, collidedX, collidedZ, collided: x !== ox || z !== oz, rock: hitRock, rockTop: hitRock ? hitRock.maxY : 0 };
   }
   function groundAt(px, pz) { return supportAt(px, pz, Infinity).ground; }
   return { supportAt, collide, groundAt };
