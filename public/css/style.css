@@ -383,7 +383,15 @@ a.discord-btn{text-decoration:none}
    content, and centered cards use margin:auto so nothing is trapped. */
 .screen{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable}
 #authScreen>*,#endScreen>*,#settingsScreen>*,#loadingScreen>*{margin:auto}
-.derc-home{overflow-y:visible}
+/* The landing/auth page is a long document, not a centered card. .derc-home
+   sets position:relative, which beat .screen's position:fixed (same
+   specificity, later rule) — so the screen grew past the fold inside an
+   overflow:hidden body and NOTHING could scroll to the login card below.
+   Pin it as its own fixed scroll viewport; the blurred backdrop (.derc-bg)
+   is already position:fixed and stays put while the content scrolls. */
+#authScreen{position:fixed;inset:0;height:100dvh;display:block;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+#authScreen>*{margin:0}
+@media (prefers-reduced-motion:reduce){#authScreen{scroll-behavior:auto}}
 #lobbyScreen{scroll-behavior:smooth}
 .lobby-grid{padding-bottom:56px}
 #leaderboard{max-height:340px;overflow-y:auto;padding-right:4px}
