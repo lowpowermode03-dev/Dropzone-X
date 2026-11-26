@@ -543,6 +543,9 @@ const FALLBACK_CHARACTERS = {
   scout: { id: 'scout', name: 'Viper Scout', build: 'slim', headgear: 'hood', skinTone: '#c98d64', accent: '#b6ff5e', suit: '#3f9e63' },
   heavy: { id: 'heavy', name: 'Bulwark Heavy', build: 'heavy', headgear: 'helmet', skinTone: '#8a5a3b', accent: '#ffb020', suit: '#68707f' },
   specter: { id: 'specter', name: 'Specter Operative', build: 'sleek', headgear: 'mask', skinTone: '#e8b48c', accent: '#8f6bff', suit: '#252836' },
+  operator: { id: 'operator', name: 'SWAT Operator', build: 'heavy', headgear: 'swat', skinTone: '#c98d64', accent: '#ffb020', suit: '#26292f' },
+  pointman: { id: 'pointman', name: 'Night Pointman', build: 'sleek', headgear: 'swat', skinTone: '#8a5a3b', accent: '#37e0ff', suit: '#1d2126' },
+  juggernaut: { id: 'juggernaut', name: 'Dread Juggernaut', build: 'heavy', headgear: 'swat', skinTone: '#8a6a4f', accent: '#ff3d5e', suit: '#33272a' },
   raider: { id: 'raider', name: 'Wasteland Raider', build: 'balanced', headgear: 'spikes', skinTone: '#c98d64', accent: '#ffb020', suit: '#7a3b2e' },
   marauder: { id: 'marauder', name: 'Iron Marauder', build: 'heavy', headgear: 'horns', skinTone: '#8a6a4f', accent: '#ff3d5e', suit: '#3f454f' },
   warhound: { id: 'warhound', name: 'Warhound', build: 'slim', headgear: 'fins', skinTone: '#a87950', accent: '#ffd23f', suit: '#5d4a2f' },
@@ -558,6 +561,8 @@ const FALLBACK_ARMORS = {
   war_plate: { id: 'war_plate', plate: '#23262d', accent: '#ff3d5e', trim: '#4a2028', tier: 3 },
   hound_plate: { id: 'hound_plate', plate: '#4c3d28', accent: '#ffd23f', trim: '#2c2115', tier: 1 },
   void_plate: { id: 'void_plate', plate: '#14101f', accent: '#b18cff', trim: '#2c2145', tier: 3 },
+  plate_carrier: { id: 'plate_carrier', plate: '#2e3238', accent: '#ffb020', trim: '#111318', tier: 2 },
+  dread_plate: { id: 'dread_plate', plate: '#241d20', accent: '#ff3d5e', trim: '#120d0f', tier: 3 },
 };
 function indexCosmetics(src) {
   if (!src) return;
@@ -922,9 +927,10 @@ function startMatch(data) {
     sun.shadow.camera.far = 1900; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.6; sun.name = 'sun';
     sun.shadow.camera.updateProjectionMatrix();
     scene.add(sun); scene.add(sun.target);
-    // sun lens-flare sprite (cheap cinematic glow, positioned per-frame)
-    const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xffe9b0, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false }));
-    flare.scale.set(420, 420, 1); flare.renderOrder = 5;
+    // sun lens-flare sprite (cheap cinematic glow, positioned per-frame).
+    // Depth-tested + modest scale: it must never blast through the world.
+    const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: getGlowTexture(), color: 0xffe9b0, transparent: true, opacity: 0.85, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending, fog: false }));
+    flare.scale.set(170, 170, 1); flare.renderOrder = 5;
     G.sunSprite = flare; scene.add(flare);
     G.world = buildWorld(scene, data, q);
     G.particles = new ParticlePool(scene, HAS_TOUCH ? 800 : 1600);
@@ -1076,6 +1082,7 @@ function makeCharacter(colorHex, username, opts = {}) {
   const glassM = new THREE.MeshStandardMaterial({ color: 0x101623, roughness: 0.15, metalness: 0.6 });
   const BUILDS = { balanced: { tw: 1, aw: 1, lw: 1 }, slim: { tw: 0.86, aw: 0.82, lw: 0.88 }, heavy: { tw: 1.24, aw: 1.28, lw: 1.16 }, sleek: { tw: 0.94, aw: 0.92, lw: 0.95 } };
   const B = BUILDS[cDef.build] || BUILDS.balanced;
+  const TAC = (cDef.headgear || 'cap') === 'swat'; // tactical operator kit
   const put = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
 
   // torso + chest rig / armor plate + backpack
@@ -1095,6 +1102,12 @@ function makeCharacter(colorHex, username, opts = {}) {
   }
   const pack = put(anim, new THREE.BoxGeometry(0.62, 0.78, 0.3), darkM, 0, 1.38, -0.48);
   if (tier >= 2) put(anim, new THREE.BoxGeometry(0.4, 0.08, 0.03), glowM, 0, 1.62, -0.64);
+  if (TAC) { // operator kit: chest mag pouches + comms antenna on the pack
+    for (const px of [-0.24, 0, 0.24]) put(anim, new THREE.BoxGeometry(0.19, 0.3, 0.1), darkM, px * B.tw, 1.28, 0.48);
+    const ant = put(anim, new THREE.CylinderGeometry(0.014, 0.014, 0.85, 5), darkM, -0.19, 2.05, -0.52);
+    ant.rotation.z = 0.14;
+    put(anim, new THREE.SphereGeometry(0.028, 6, 5), glowM, -0.25, 2.48, -0.52);
+  }
 
   // head + character/enemy headgear
   put(anim, new THREE.SphereGeometry(0.36, 16, 13), skinM, 0, 2.08, 0);
@@ -1113,6 +1126,16 @@ function makeCharacter(colorHex, username, opts = {}) {
       put(anim, new THREE.BoxGeometry(0.09, 0.045, 0.04), glowM, 0.11, 2.13, 0.35);
       if (hg === 'reaper') { const spike = put(anim, new THREE.ConeGeometry(0.09, 0.34, 8), darkM, 0, 2.52, -0.08); spike.rotation.x = -0.5; }
     }
+  } else if (hg === 'swat') {
+    // SWAT operator: balaclava + ballistic helmet + NVG mount + visor
+    put(anim, new THREE.SphereGeometry(0.37, 16, 13), darkM, 0, 2.06, 0); // balaclava
+    put(anim, new THREE.SphereGeometry(0.43, 18, 12, 0, Math.PI * 2, 0, 1.8), plateM, 0, 2.16, 0); // helmet shell
+    put(anim, new THREE.CylinderGeometry(0.44, 0.46, 0.1, 18), trimM, 0, 2.04, 0); // helmet rim
+    put(anim, new THREE.BoxGeometry(0.46, 0.12, 0.07), glassM, 0, 2.0, 0.34); // visor / goggles
+    put(anim, new THREE.BoxGeometry(0.13, 0.09, 0.1), trimM, 0, 2.3, 0.38); // NVG mount
+    const nvg = put(anim, new THREE.CylinderGeometry(0.045, 0.045, 0.17, 8), darkM, 0, 2.38, 0.42);
+    nvg.rotation.x = 1.15; // NVG tube flipped up
+    for (const sd of [-1, 1]) put(anim, new THREE.BoxGeometry(0.05, 0.09, 0.26), trimM, 0.42 * sd, 2.1, 0); // side rails
   } else { // helmet family: helmet / spikes / horns / fins
     put(anim, new THREE.SphereGeometry(0.4, 16, 12, 0, Math.PI * 2, 0, 2.2), plateM, 0, 2.1, 0);
     put(anim, new THREE.BoxGeometry(0.46, 0.07, 0.06), glowM, 0, 2.12, 0.35);
@@ -1131,7 +1154,7 @@ function makeCharacter(colorHex, username, opts = {}) {
     const w = isArm ? B.aw : B.lw;
     const limb = new THREE.Mesh(new THREE.BoxGeometry((isArm ? 0.21 : 0.27) * w, isArm ? 0.82 : 0.92, (isArm ? 0.24 : 0.3) * w), isArm ? suit : darkM);
     limb.position.y = isArm ? -0.38 : -0.44; limb.castShadow = true;
-    const end = new THREE.Mesh(new THREE.BoxGeometry((isArm ? 0.2 : 0.29) * w, 0.14, (isArm ? 0.22 : 0.42) * w), isArm ? skinM : darkM);
+    const end = new THREE.Mesh(new THREE.BoxGeometry((isArm ? 0.2 : 0.29) * w, 0.14, (isArm ? 0.22 : 0.42) * w), isArm ? (TAC ? darkM : skinM) : darkM); // TAC wears gloves
     end.position.y = isArm ? -0.82 : -0.92; if (!isArm) end.position.z = 0.05;
     pivot.add(limb, end);
     if (tier >= 1) { // armor that rides the limb animation: pauldrons, forearm/shin guards
@@ -1145,6 +1168,7 @@ function makeCharacter(colorHex, username, opts = {}) {
         if (tier >= 2) put(pivot, new THREE.BoxGeometry(0.3 * w, 0.16, 0.1), trimM, 0, -0.3, 0.17);
       }
     }
+    if (TAC && !isArm) put(pivot, new THREE.BoxGeometry(0.3 * w, 0.24, 0.12), darkM, 0, -0.42, 0.16); // knee pad rides the leg swing
     return pivot;
   };
   const legL = mkLimb(-0.62, false), legR = mkLimb(0.62, false);
@@ -1192,8 +1216,8 @@ function addLootMesh(item) {
     new THREE.MeshStandardMaterial({ color, emissive: new THREE.Color(color), emissiveIntensity: 0.55, roughness: 0.4 })
   );
   base.position.y = 0.55;
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 9, 10, 1, true), lootBeamMaterial(color));
-  beam.position.y = 4.8;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 8, 10, 1, true), lootBeamMaterial(color));
+  beam.position.y = 4.3;
   grp.add(base, beam);
   grp.position.set(item.x, item.y, item.z);
   grp.userData = { item, base, beam };
@@ -1329,8 +1353,8 @@ function onSnapshot(snap) {
   G.busPos = snap.bus;
   G.storm = snap.storm;
   $('aliveInfo').textContent = '👥 ' + snap.aliveCount;
-  $('stormInfo').textContent = snap.storm.state === 'shrinking' ? `🌩️ Storm shrinking! (${snap.storm.dps}/s)` : snap.phase === 'bus' ? '🚌 Battle Bus incoming…' : `⛈️ Storm shrinks in ${snap.storm.timer}s`;
-  $('stormInfo').style.color = snap.storm.state === 'shrinking' ? '#ff8080' : (snap.storm.timer <= 10 && snap.phase !== 'bus' ? '#ffc4c4' : '');
+  $('stormInfo').textContent = snap.storm.state === 'shrinking' ? `🌩️ Storm shrinking! (${snap.storm.dps}/s)` : G.mode === 'bus' ? '🚌 Riding the Battle Bus…' : `⛈️ Storm shrinks in ${snap.storm.timer}s`;
+  $('stormInfo').style.color = snap.storm.state === 'shrinking' ? '#ff8080' : (snap.storm.timer <= 10 && G.mode !== 'bus' ? '#ffc4c4' : '');
   const sun = G.scene.getObjectByName('sun');
   // bus
   if (G.busGroup) { G.busGroup.position.set(snap.bus.x, snap.bus.y + 6, snap.bus.z); G.busGroup.visible = snap.phase === 'bus'; }
@@ -1994,6 +2018,9 @@ function loop(now) {
     G.eyeH += (eyeTarget - G.eyeH) * Math.min(1, dt * 11);
     placeCamera(dt, G.eyeH);
   }
+  // bus pill visibility is derived from the actual mode every frame, so it
+  // can never outlive the bus ride regardless of event ordering
+  if (G.active) document.body.classList.toggle('busmode', G.mode === 'bus');
   updateSelfMesh(dt, t);
 
   // ---- camera polish: ADS FOV, sprint FOV kick, shake, landing dip, sun flare ----
@@ -2023,7 +2050,7 @@ function loop(now) {
   if (G.sunSprite) {
     G.sunSprite.position.copy(G.camera.position).addScaledVector(SUN_DIR_V, 2600);
     const look = new THREE.Vector3(); G.camera.getWorldDirection(look);
-    G.sunSprite.material.opacity = Math.pow(Math.max(0, look.dot(SUN_DIR_V)), 6) * 0.9;
+    G.sunSprite.material.opacity = Math.pow(Math.max(0, look.dot(SUN_DIR_V)), 8) * 0.55;
   }
 
   // swimming slowdown is implicit via water ground clamp
