@@ -239,6 +239,36 @@ canvas.game{display:block;touch-action:none}
   .touch-cluster{bottom:calc(96px + var(--safe-b));transform:scale(.92);transform-origin:bottom right}
   body.touch .hud-bottom-left{bottom:calc(168px + var(--safe-b))}
 }
+/* Short landscape screens (phones are 740-960px wide but only ~360-430px
+   tall): the compact HUD must key off height, not width, or the touch
+   cluster swamps the minimap, ammo readout and inventory. */
+@media(max-height:480px) and (orientation:landscape){
+  #minimap{width:104px;height:104px}
+  #killfeed{top:126px;font-size:11px}
+  .hud-top-center{width:min(380px,46vw)}
+  .storm-info,.alive-info,.compass{font-size:11.5px;padding:5px 9px}
+  #compassStrip{height:20px}
+  .touch-cluster{bottom:calc(92px + var(--safe-b));transform:scale(.84);transform-origin:bottom right}
+  #btnCycleT{right:196px;bottom:58px}
+  #btnMatT{right:166px;bottom:0}
+  .hud-bottom-right{right:8px;bottom:calc(8px + var(--safe-b))}
+  .slot{width:47px;height:47px;font-size:8.5px;border-radius:9px}
+  .slot .ic{font-size:17px;line-height:21px}
+  #ammoMag{font-size:22px}.ammo-box{padding:5px 9px;margin-bottom:5px}
+  #weaponName{font-size:10px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  body.touch .hud-bottom-left{bottom:calc(160px + var(--safe-b));top:auto;left:10px;width:min(230px,30vw)}
+  .bar{height:17px}.bar span{font-size:11px}
+  .mats{font-size:11.5px;padding:5px 8px}
+  #btnPauseHud,#btnFullscreenHud{width:36px;height:36px;font-size:16px;top:calc(44px + var(--safe-t))}
+  #btnFullscreenHud{top:calc(86px + var(--safe-t))}
+  .prompt{bottom:auto;top:56%;font-size:13px;width:max-content;max-width:90vw}
+  .notice{top:16%;font-size:13px;padding:8px 14px}
+  .build-box{bottom:auto;top:calc(78px + var(--safe-t));font-size:11px;padding:6px 10px}
+  .bus-prompt{top:15%;font-size:15px;padding:11px 18px}
+  #btnJumpBus{bottom:20%;padding:12px 20px;font-size:15px}
+  #killBanner{top:24%}
+  #locationBanner{top:10%}
+}
 
 /* ============ DROPZONE X landing page ============ */
 #authScreen{background:linear-gradient(180deg,rgba(8,10,28,.60),rgba(8,10,28,.42) 45%,rgba(8,10,28,.80)),url('/img/hero.jpg') center/cover no-repeat;flex-direction:column;align-items:stretch;justify-content:flex-start}

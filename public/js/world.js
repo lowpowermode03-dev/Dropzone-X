@@ -210,6 +210,41 @@ function detailBumpTex() {
   t.colorSpace = THREE.NoColorSpace;
   return t;
 }
+// Tiling fBm value-noise albedo texture: deterministic hash lattice with
+// period-wrapped octaves (4/8/16) so it tiles seamlessly. Near-white output —
+// materials multiply it over their vertex/instance colours for real grain.
+function surfNoiseTex(seed, contrast = 0.16, size = 96, base = 246) {
+  return canvasTex(size, size, (g) => {
+    const hash = (x, y) => { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 974711)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const wgt = (t) => t * t * (3 - 2 * t);
+    const tile = (u, v, P) => {
+      const ix = Math.floor(u), iy = Math.floor(v), fx = wgt(u - ix), fy = wgt(v - iy);
+      const wrap = (n) => ((n % P) + P) % P;
+      const x0 = wrap(ix), x1 = wrap(ix + 1), y0 = wrap(iy), y1 = wrap(iy + 1);
+      const a = hash(x0, y0), b = hash(x1, y0), c = hash(x0, y1), d = hash(x1, y1);
+      return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+    };
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      let v = 0, amp = 0.55, P = 4;
+      for (let o = 0; o < 3; o++) { v += amp * tile(x / size * P, y / size * P, P); amp *= 0.5; P *= 2; }
+      const g8 = Math.max(0, Math.min(255, Math.round(base * (1 + (v - 0.5) * 2 * contrast))));
+      g.fillStyle = `rgb(${g8},${g8},${g8})`;
+      g.fillRect(x, y, 1, 1);
+    }
+  }, { repeat: [850, 850] });
+}
+// Tree-bark texture: vertical streaks on a brown base.
+function barkTex() {
+  return canvasTex(64, 64, (g) => {
+    g.fillStyle = '#6e4f2c'; g.fillRect(0, 0, 64, 64);
+    const r = mulberry32(41);
+    for (let i = 0; i < 46; i++) {
+      g.fillStyle = `rgba(${30 + r() * 40 | 0},${20 + r() * 26 | 0},10,${0.25 + r() * 0.4})`;
+      g.fillRect(r() * 64, 0, 1 + r() * 3, 64);
+    }
+    for (let i = 0; i < 20; i++) { g.fillStyle = `rgba(0,0,0,${0.15 + r() * 0.25})`; g.fillRect(r() * 64, r() * 64, 2 + r() * 8, 1.5); }
+  }, { repeat: [1, 2] });
+}
 function facadeTextures(seed, base) {
   const r = mulberry32(seed);
   const map = canvasTex(256, 256, (g) => {
@@ -608,8 +643,8 @@ export function buildWorld(scene, data, quality = {}) {
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const cGrass = new THREE.Color(0x43b02c), cGrass2 = new THREE.Color(0xb9e356), cSand = new THREE.Color(0xf7d774),
-    cRock = new THREE.Color(0x8d8378), cRockDark = new THREE.Color(0x5d5a54), cSnow = new THREE.Color(0xffffff), cDirt = new THREE.Color(0xa8834f), cScorch = new THREE.Color(0x77a83b),
+  const cGrass = new THREE.Color(0x3d7a2a), cGrass2 = new THREE.Color(0x6fae3e), cSand = new THREE.Color(0xd9c27a),
+    cRock = new THREE.Color(0x72695d), cRockDark = new THREE.Color(0x4f4d49), cSnow = new THREE.Color(0xedf0f5), cDirt = new THREE.Color(0x9a7b4a), cScorch = new THREE.Color(0x6f9c34), cStone = new THREE.Color(0x595952), cBasalt = new THREE.Color(0x3a3a3f), cDirtTop = new THREE.Color(0x7d6240),
     cForest = new THREE.Color(0x1e6b30), cScree = new THREE.Color(0xa49a86), cWet = new THREE.Color(0x4f4a33);
   const tmp = new THREE.Color();
   const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -644,11 +679,11 @@ export function buildWorld(scene, data, quality = {}) {
       tmp.copy(cGrass).lerp(cGrass2, n);
       tmp.lerp(cScorch, Math.max(0, n - 0.72) * 0.8);
       tmp.lerp(cForest, mm * 0.55 * (1 - slope));                    // dark alpine forest floor
-      tmp.lerp(cDirt, slope * 0.4);
+      tmp.lerp(cDirt, slope * 0.55);
       tmp.lerp(cScree, smooth(28, 70, h) * 0.45 * (1 - slope));      // scree aprons
       tmp.lerp(cRock, Math.max(0, slope - 0.34) * 1.25);             // exposed cliffs
       tmp.lerp(cRockDark, smooth(45, 120, h) * slope * 0.55);       // high dark rock
-      const snow = smooth(76, 126, h + n * 30) * (1 - Math.max(0, slope - 0.55) * 1.6);
+      const snow = smooth(112, 150, h + n * 30) * (1 - Math.max(0, slope - 0.55) * 1.6);
       tmp.lerp(cSnow, Math.max(0, Math.min(1, snow)));               // snowfields & caps
       if (h > 55) tmp.lerp(cRock, smooth(55, 95, h) * 0.25);
       // geological strata bands on exposed mountain rock
@@ -671,11 +706,25 @@ export function buildWorld(scene, data, quality = {}) {
       const zt = zoneTintAt(x, z);
       if (zt) tmp.lerp(zt.tint, zt.w * 0.52);
     }
+    // depth strata: thin soil skin over stone, dark basalt cores on high ground
+    if (h >= 1.2) {
+      const rockiness = Math.max(smooth(0.30, 0.55, slope), smooth(55, 95, h) * 0.85);
+      const soil = 0.55 + smooth(14, 42, h) * 0.45 + n * 0.25;
+      if (rockiness > 0.02) {
+        const depth = (1 - rockiness) * soil;
+        if (depth > 6) tmp.lerp(cBasalt, Math.min(0.9, (depth - 6) / 22 + 0.25));
+        else if (depth > 2) tmp.lerp(cStone, 0.35 + (depth - 2) / 4 * 0.45);
+        else tmp.lerp(cDirtTop, 0.25 + depth / 2 * 0.35);
+      }
+      const gr = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+      const gf = (gr - Math.floor(gr) - 0.5) * 0.06;
+      tmp.r = Math.max(0, tmp.r * (1 + gf)); tmp.g = Math.max(0, tmp.g * (1 + gf)); tmp.b = Math.max(0, tmp.b * (1 + gf));
+    }
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, bumpMap: detailBumpTex(), bumpScale: 1.4 });
+  const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, map: surfNoiseTex(1337, 0.16, 96, 232), bumpMap: detailBumpTex(), bumpScale: 1.4 });
   // procedural micro-detail: multi-scale ground speckle + dry patches so the
   // terrain reads as textured earth up close instead of flat vertex color
   terrainMat.onBeforeCompile = (sh) => {
@@ -875,8 +924,8 @@ export function buildWorld(scene, data, quality = {}) {
   scene.add(crates);
 
   /* ---- trees: trunk + two foliage blobs, per-instance colour ---- */
-  const trunkMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.32, 0.6, 4.6, 7), new THREE.MeshStandardMaterial({ color: 0x74512e, roughness: 1, bumpMap: detailBumpTex(), bumpScale: 0.5 }), Math.max(1, data.trees.length));
-  const folMat = new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true });
+  const trunkMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.32, 0.6, 4.6, 7), new THREE.MeshStandardMaterial({ color: 0x8a6844, map: barkTex(), roughness: 1, bumpMap: detailBumpTex(), bumpScale: 0.5 }), Math.max(1, data.trees.length));
+  const folMat = new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true, map: surfNoiseTex(7331, 0.30, 96, 235) });
   const canMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(3.4, 1), folMat, Math.max(1, data.trees.length));
   const canMesh2 = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.3, 1), folMat.clone(), Math.max(1, data.trees.length));
   canMesh.castShadow = true; canMesh2.castShadow = true;
@@ -888,15 +937,15 @@ export function buildWorld(scene, data, quality = {}) {
     { const cr = 0.55 * t.s; colliders.push({ minX: t.x - cr, maxX: t.x + cr, minZ: t.z - cr, maxZ: t.z + cr, minY: y - 0.5, maxY: y + 5.2 * t.s, type: 'tree', index: i }); }
     dummy.position.set(t.x, y + 6.4 * t.s, t.z); dummy.scale.set(t.s, t.s * 1.15, t.s); dummy.updateMatrix();
     canMesh.setMatrixAt(i, dummy.matrix);
-    canMesh.setColorAt(i, tmpColor.setHSL(0.29 + rng() * 0.06, 0.5, 0.3 + rng() * 0.14));
+    canMesh.setColorAt(i, tmpColor.setHSL(0.29 + rng() * 0.06, 0.42, 0.28 + rng() * 0.10));
     dummy.position.set(t.x + 1.1 * t.s, y + 9.0 * t.s, t.z + 0.5 * t.s); dummy.scale.setScalar(t.s); dummy.updateMatrix();
     canMesh2.setMatrixAt(i, dummy.matrix);
-    canMesh2.setColorAt(i, tmpColor.setHSL(0.27 + rng() * 0.07, 0.52, 0.34 + rng() * 0.14));
+    canMesh2.setColorAt(i, tmpColor.setHSL(0.27 + rng() * 0.07, 0.44, 0.31 + rng() * 0.10));
   });
   scene.add(trunkMesh, canMesh, canMesh2);
 
   /* ---- rocks ---- */
-  const rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2.3, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, bumpMap: detailBumpTex(), bumpScale: 1.1 }), Math.max(1, data.rocks.length));
+  const rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2.3, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, map: surfNoiseTex(9182, 0.26, 96, 235), bumpMap: detailBumpTex(), bumpScale: 1.1 }), Math.max(1, data.rocks.length));
   rockMesh.castShadow = true;
   data.rocks.forEach((r, i) => {
     { const gy = terrainHeight(r.x, r.z), cr = 1.9 * r.s; colliders.push({ minX: r.x - cr, maxX: r.x + cr, minZ: r.z - cr, maxZ: r.z + cr, minY: gy - 0.5, maxY: gy + 2.2 * r.s, type: 'rock', index: i }); }
@@ -1131,7 +1180,7 @@ export function buildWorld(scene, data, quality = {}) {
     return { x, y, z, s: 0.8 + rng() * 1.1, r: rng() * 3 };
   });
   const pineTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.42, 3.6, 6), new THREE.MeshStandardMaterial({ color: 0x5d4126, roughness: 1 }), Math.max(1, pineSpots.length));
-  const pineFol = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+  const pineFol = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, map: folMat.map });
   const swayify = (mat) => {
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = grassTime;
@@ -1359,6 +1408,166 @@ export function buildWorld(scene, data, quality = {}) {
     }
   }
   return { colliders, trunkMesh, canMesh, canMesh2, rockMesh, grassMesh, pineCan, cliffMesh, updateWorld };
+}
+
+// Character controller over the world colliders: uniform-grid broadphase,
+// support-height ground probe (terrain vs box/cylinder tops with step-up),
+// slope blocking past the 50° walk limit, and axis-separated circle push-out
+// with velocity projection. Static colliders must be registered once before
+// any query; player structures are handled as a small dynamic set on top.
+export function createGroundController(colliders, structRef, heightsFn) {
+  const STEP_UP = 0.55, MAX_SLOPE = 1.19, PLAYER_RAD = 0.40, CELL = 8;
+  const grid = new Map();
+  const key = (cx, cz) => cx + ',' + cz;
+  const insert = (c) => {
+    const x0 = Math.floor((c.minX - PLAYER_RAD) / CELL), x1 = Math.floor((c.maxX + PLAYER_RAD) / CELL);
+    const z0 = Math.floor((c.minZ - PLAYER_RAD) / CELL), z1 = Math.floor((c.maxZ + PLAYER_RAD) / CELL);
+    for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) {
+      const k = key(cx, cz);
+      let a = grid.get(k); if (!a) grid.set(k, a = []);
+      a.push(c);
+    }
+  };
+  for (let i = 0; i < colliders.length; i++) { const c = colliders[i]; c._top = c.maxY; insert(c); }
+  let _stamp = 0;
+  const _nb = [];
+  const nearby = (x, z) => {
+    _nb.length = 0; _stamp++;
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gz = cz - 1; gz <= cz + 1; gz++) {
+      const a = grid.get(key(gx, gz)); if (!a) continue;
+      for (let i = 0; i < a.length; i++) { const c = a[i]; if (c._stamp !== _stamp) { c._stamp = _stamp; _nb.push(c); } }
+    }
+    return _nb;
+  };
+  const eachStruct = (fn) => {
+    for (const e of structRef.values()) { const s = e && e.data ? e.data : e; if (s) fn(s); }
+  };
+  const boxTopAt = (c, x, z) => {
+    if (x < c.minX - PLAYER_RAD || x > c.maxX + PLAYER_RAD || z < c.minZ - PLAYER_RAD || z > c.maxZ + PLAYER_RAD) return -Infinity;
+    if (c.type === 'tree' || c.type === 'rock') {
+      const cx = (c.minX + c.maxX) * 0.5, cz = (c.minZ + c.maxZ) * 0.5, rr = (c.maxX - c.minX) * 0.5;
+      if ((x - cx) * (x - cx) + (z - cz) * (z - cz) > rr * rr) return -Infinity;
+    }
+    return c._top === undefined ? c.maxY : c._top;
+  };
+  // Player-structure support: identical geometry to the legacy groundAt so
+  // floors/ramps feel unchanged — floors are +0.2 slabs, ramps rise 4.6 in
+  // local +z over 7.2 m.
+  const structTopAt = (s, x, z) => {
+    if (s.type === 'floor') {
+      if (Math.abs(x - s.x) < 2.5 && Math.abs(z - s.z) < 2.5) return s.y + 0.2;
+      return -Infinity;
+    }
+    if (s.type === 'ramp') {
+      const dx = x - s.x, dz = z - s.z;
+      const cos = Math.cos(-(s.rotY || 0)), sin = Math.sin(-(s.rotY || 0));
+      const lx = dx * cos - dz * sin, lz = dx * sin + dz * cos;
+      if (Math.abs(lx) < 2.5 && Math.abs(lz) < 3.6) return s.y + ((lz + 3.6) / 7.2) * 4.6;
+    }
+    return -Infinity;
+  };
+  // Support height under the player: terrain, stepped-up collider tops and
+  // player structures. 'blocked' flags terrain rising past the walk slope.
+  function supportAt(px, pz, refY, dirx = 0, dirz = 0, onGroundPrev = false) {
+    const th = heightsFn(px, pz);
+    let ground = th, blocked = false;
+    const list = nearby(px, pz);
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (c.type === 'tree') continue; // trunks block horizontally, not a floor
+      const top = boxTopAt(c, px, pz);
+      if (top > ground && top <= refY + STEP_UP) ground = top;
+    }
+    eachStruct((s) => {
+      if (s.type !== 'floor' && s.type !== 'ramp') return;
+      const top = structTopAt(s, px, pz);
+      if (top > ground && top <= refY + STEP_UP + 0.75) ground = top;
+    });
+    if (onGroundPrev && ground <= th + 0.001 && (dirx !== 0 || dirz !== 0)) {
+      const ah = heightsFn(px + dirx, pz + dirz); // 1.0 m ahead
+      if (ah - refY > STEP_UP && ah - refY > MAX_SLOPE) {
+        const mh = heightsFn(px + dirx * 0.5, pz + dirz * 0.5);
+        if ((mh - refY) / 0.5 > MAX_SLOPE) blocked = true;
+      }
+    }
+    return { ground, blocked, th };
+  }
+  // Axis-separated circle push-out (X pass, then Z pass) with UNMANNED-style
+  // velocity projection: inward velocity along the contact normal is removed
+  // so walls slide instead of sticking. Boxes whose top can be stepped onto
+  // are skipped, so walking onto a platform never snags its side.
+  function collide(px, pz, footY, vel, radius = PLAYER_RAD) {
+    const R = radius, headY = footY + 1.8;
+    const ox = px, oz = pz;
+    let x = px, z = pz;
+    let collidedX = false, collidedZ = false;
+    const pass = (axis) => {
+      const list = nearby(x, z);
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i];
+        const top = c._top === undefined ? c.maxY : c._top;
+        if (top <= footY + STEP_UP) continue;
+        if (c.minY >= headY) continue;
+        if (x + R < c.minX || x - R > c.maxX || z + R < c.minZ || z - R > c.maxZ) continue;
+        const insideX = x > c.minX && x < c.maxX, insideZ = z > c.minZ && z < c.maxZ;
+        if (insideX && insideZ) {
+          if (axis === 'x') {
+            const dxl = x - c.minX, dxr = c.maxX - x;
+            if (dxl < dxr) { x = c.minX - R; if (vel && vel.x > 0) vel.x = 0; } else { x = c.maxX + R; if (vel && vel.x < 0) vel.x = 0; }
+            collidedX = true;
+          } else {
+            const dzl = z - c.minZ, dzr = c.maxZ - z;
+            if (dzl < dzr) { z = c.minZ - R; if (vel && vel.z > 0) vel.z = 0; } else { z = c.maxZ + R; if (vel && vel.z < 0) vel.z = 0; }
+            collidedZ = true;
+          }
+        } else {
+          const nx = Math.max(c.minX, Math.min(x, c.maxX)), nz = Math.max(c.minZ, Math.min(z, c.maxZ));
+          const dx = x - nx, dz = z - nz, d2 = dx * dx + dz * dz;
+          if (d2 > 1e-9 && d2 < R * R) {
+            const d = Math.sqrt(d2), ux = dx / d, uz = dz / d, push = R - d;
+            if (axis === 'x' && dx !== 0) { x += ux * push; collidedX = true; }
+            else if (axis === 'z' && dz !== 0) { z += uz * push; collidedZ = true; }
+            else continue;
+            if (vel) { const vn = vel.x * ux + vel.z * uz; if (vn < 0) { vel.x -= ux * vn; vel.z -= uz * vn; } }
+          }
+        }
+      }
+      eachStruct((s) => {
+        if (s.type !== 'wall') return;
+        if (s.y + 5 <= footY + STEP_UP) return;
+        const cs = Math.abs(Math.cos(s.rotY || 0)), sn = Math.abs(Math.sin(s.rotY || 0));
+        const hw = 2.5 * cs + 0.35 * sn, hd = 2.5 * sn + 0.35 * cs;
+        if (x + R < s.x - hw || x - R > s.x + hw || z + R < s.z - hd || z - R > s.z + hd) return;
+        const insideX = x > s.x - hw && x < s.x + hw, insideZ = z > s.z - hd && z < s.z + hd;
+        if (insideX && insideZ) {
+          if (axis === 'x') {
+            const dxl = x - (s.x - hw), dxr = (s.x + hw) - x;
+            if (dxl < dxr) { x = s.x - hw - R; if (vel && vel.x > 0) vel.x = 0; } else { x = s.x + hw + R; if (vel && vel.x < 0) vel.x = 0; }
+            collidedX = true;
+          } else {
+            const dzl = z - (s.z - hd), dzr = (s.z + hd) - z;
+            if (dzl < dzr) { z = s.z - hd - R; if (vel && vel.z > 0) vel.z = 0; } else { z = s.z + hd + R; if (vel && vel.z < 0) vel.z = 0; }
+            collidedZ = true;
+          }
+        } else {
+          const nx = Math.max(s.x - hw, Math.min(x, s.x + hw)), nz = Math.max(s.z - hd, Math.min(z, s.z + hd));
+          const dx = x - nx, dz = z - nz, d2 = dx * dx + dz * dz;
+          if (d2 > 1e-9 && d2 < R * R) {
+            const d = Math.sqrt(d2), ux = dx / d, uz = dz / d, push = R - d;
+            if (axis === 'x' && dx !== 0) { x += ux * push; collidedX = true; }
+            else if (axis === 'z' && dz !== 0) { z += uz * push; collidedZ = true; }
+            else return;
+            if (vel) { const vn = vel.x * ux + vel.z * uz; if (vn < 0) { vel.x -= ux * vn; vel.z -= uz * vn; } }
+          }
+        }
+      });
+    };
+    pass('x'); pass('z');
+    return { x, z, collidedX, collidedZ, collided: x !== ox || z !== oz };
+  }
+  function groundAt(px, pz) { return supportAt(px, pz, Infinity).ground; }
+  return { supportAt, collide, groundAt };
 }
 
 export function hideNode(worldRefs, data, type, index) {
