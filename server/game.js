@@ -7,13 +7,13 @@ const BOT_NAMES = ['Vortex','Nova','Blaze','Echo','Rogue','Pixel','Zephyr','Onyx
 const AMMO_FOR = { pistol: 'light', smg: 'light', ar: 'medium', lmg: 'medium', sniper: 'heavy', shotgun: 'shells', burst: 'medium', revolver: 'heavy', pump: 'shells', dmr: 'heavy' };
 const MAT_HP = { wood: 150, stone: 250, metal: 350 };
 const STORM_PHASES = [
-  { radius: 1250, wait: 35, shrink: 30, dps: 1 },
-  { radius: 850, wait: 25, shrink: 25, dps: 2 },
-  { radius: 550, wait: 20, shrink: 20, dps: 5 },
-  { radius: 320, wait: 18, shrink: 18, dps: 8 },
-  { radius: 170, wait: 15, shrink: 15, dps: 10 },
-  { radius: 80, wait: 12, shrink: 12, dps: 15 },
-  { radius: 0, wait: 10, shrink: 12, dps: 20 },
+  { radius: 2100, wait: 50, shrink: 50, dps: 1 },
+  { radius: 1300, wait: 35, shrink: 38, dps: 2 },
+  { radius: 800, wait: 28, shrink: 30, dps: 5 },
+  { radius: 480, wait: 24, shrink: 25, dps: 8 },
+  { radius: 260, wait: 20, shrink: 20, dps: 10 },
+  { radius: 120, wait: 16, shrink: 16, dps: 15 },
+  { radius: 0, wait: 12, shrink: 12, dps: 20 },
 ];
 
 let LOOT_SEQ = 1, STRUCT_SEQ = 1, ROOM_SEQ = 1, MOB_SEQ = 1;
@@ -107,8 +107,8 @@ class Room {
     this.mobs = new Map(); // wild mobs (PvE)
     this.startTimer = null;
     this.tickTimer = null;
-    this.bus = { x: -1900, z: (Math.random() - 0.5) * 1400, y: 345, speed: 95, dir: 1 };
-    this.storm = { phaseIdx: -1, state: 'idle', timer: 20, cx: 0, cz: 0, radius: 1900, tcx: 0, tcz: 0, tradius: 1900, fromRadius: 1900, dps: 0, shrinkTotal: 1, shrinkElapsed: 0 };
+    this.bus = { x: -3900, z: (Math.random() - 0.5) * 2800, y: 460, speed: 130, dir: 1 };
+    this.storm = { phaseIdx: -1, state: 'idle', timer: 20, cx: 0, cz: 0, radius: 3400, tcx: 0, tcz: 0, tradius: 3400, fromRadius: 3400, dps: 0, shrinkTotal: 1, shrinkElapsed: 0 };
     this.startedAt = 0;
     this.totalFighters = 0;
     this.rngState = (Date.now() % 2147483647) || 1;
@@ -393,15 +393,15 @@ class Room {
   }
 
   spawnMobs() {
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < 64; i++) {
       let x = 0, z = 0, ok = false;
       for (let tries = 0; tries < 8 && !ok; tries++) {
         if (Math.random() < 0.65) {
           const poi = POIS[Math.floor(Math.random() * POIS.length)];
           const a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 170;
           x = poi.x + Math.cos(a) * d; z = poi.z + Math.sin(a) * d;
-        } else { x = (Math.random() - 0.5) * 3400; z = (Math.random() - 0.5) * 3400; }
-        ok = terrainHeight(x, z) > 1 && Math.abs(x) < 1900 && Math.abs(z) < 1900;
+        } else { x = (Math.random() - 0.5) * 6800; z = (Math.random() - 0.5) * 6800; }
+        ok = terrainHeight(x, z) > 1 && Math.abs(x) < 3900 && Math.abs(z) < 3900;
       }
       if (!ok) continue;
       const kind = Math.random() < 0.3 ? 'stalker' : 'boar';
@@ -670,7 +670,7 @@ class Room {
     if (now - bot.lastAiAt < 150) return;
     bot.lastAiAt = now;
     if (bot.inBus) {
-      const progress = (this.bus.x + 1900) / 3800;
+      const progress = (this.bus.x + 3900) / 7800;
       if (progress >= bot.jumpAt) { bot.inBus = false; bot.skydiving = true; bot.x = this.bus.x; bot.y = this.bus.y - 5; bot.z = this.bus.z; bot.aiTarget = POIS[Math.floor(Math.random() * POIS.length)]; }
       return;
     }
@@ -749,7 +749,7 @@ class Room {
     if (this.phase === 'bus') {
       this.bus.x += this.bus.speed * 0.05;
       for (const p of this.players.values()) if (p.inBus) { p.x = this.bus.x; p.y = this.bus.y; p.z = this.bus.z; }
-      if (this.bus.x > 1900) {
+      if (this.bus.x > 3900) {
         for (const p of this.players.values()) if (p.inBus) { p.inBus = false; p.skydiving = true; p.y = this.bus.y - 5; if (!p.isBot) this.toPlayer(p.id, 'forceJump', {}); }
         this.phase = 'playing';
         this.storm.state = 'waiting'; this.storm.timer = STORM_PHASES[0].wait; this.storm.phaseIdx = 0;

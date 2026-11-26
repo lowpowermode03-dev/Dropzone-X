@@ -13,6 +13,10 @@ const HILLS = [
   { x: -1100, z: 600, r: 650, h: 48 }, { x: 700, z: 900, r: 750, h: 62 },
   { x: 0, z: 0, r: 500, h: 30 }, { x: -300, z: 1400, r: 600, h: 40 },
   { x: 1300, z: 300, r: 550, h: 45 },
+  // outer ring (8000m map) — MUST match server/map.js
+  { x: 2500, z: -600, r: 520, h: 34 }, { x: -2300, z: -400, r: 480, h: 30 },
+  { x: 300, z: -2700, r: 540, h: 36 }, { x: -800, z: 2600, r: 500, h: 28 },
+  { x: 2800, z: 1900, r: 560, h: 38 }, { x: -2900, z: -1500, r: 520, h: 32 },
 ];
 export const MOUNTAINS = [
   { name: 'Mount Apex', x: -450, z: -1450, r: 620, h: 215 },
@@ -21,6 +25,11 @@ export const MOUNTAINS = [
   { name: 'Kings Crown', x: 1550, z: 150, r: 560, h: 180 },
   { name: 'Verde Highlands', x: -1550, z: 1100, r: 600, h: 170 },
   { name: 'Solstice Peaks', x: 700, z: 1650, r: 520, h: 175 },
+  // outer range (8000m map): the island's new far peaks — MUST match server
+  { name: 'Aurora Summit', x: 3450, z: -3050, r: 600, h: 200 },
+  { name: 'Cinder Tooth', x: -3200, z: 3250, r: 560, h: 185 },
+  { name: 'Breaker Spire', x: 3250, z: 3250, r: 540, h: 170 },
+  { name: 'Westwall Range', x: -3450, z: -350, r: 580, h: 190 },
 ];
 // Rivers: descending channels carved into the terrain (only ever cut down).
 // MUST match server/map.js exactly. src/dst = channel bed elevations.
@@ -126,7 +135,7 @@ function terrainNative(x, z) {
     }
   }
   const edge = Math.max(Math.abs(x), Math.abs(z));
-  if (edge > 1500) { const t = Math.min(1, (edge - 1500) / 500); h = h * (1 - t) + (-14) * t; }
+  if (edge > 3000) { const t = Math.min(1, (edge - 3000) / 900); h = h * (1 - t) + (-14) * t; }
   return h;
 }
 // Expansion-zone terrain stamps. MUST match server/map.js exactly.
@@ -356,11 +365,13 @@ export function createSky(scene) {
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(5200, 40, 20), skyMat);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(6800, 40, 20), skyMat);
   sky.frustumCulled = false;
   scene.add(sky);
+  SKY_MESH = sky; // pinned to the camera in updateWorld so the 8km island never outruns it
   return skyMat;
 }
+let SKY_MESH = null;
 
 /* ============================== WATER ============================== */
 export function createWater(scene) {
@@ -403,7 +414,7 @@ export function createWater(scene) {
         gl_FragColor = vec4(col, alpha);
       }`,
   });
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(11000, 11000, 64, 64), mat);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(26000, 26000, 64, 64), mat);
   water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y;
   scene.add(water);
   return mat;
@@ -639,7 +650,7 @@ export function buildWorld(scene, data, quality = {}) {
   const tmpColor = new THREE.Color();
 
   /* ---- terrain ---- */
-  const geo = new THREE.PlaneGeometry(4000, 4000, SEG, SEG);
+  const geo = new THREE.PlaneGeometry(8000, 8000, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
@@ -983,7 +994,7 @@ export function buildWorld(scene, data, quality = {}) {
   const HT = grassCount >= 40000 ? 1024 : 512;
   const hdata = new Uint16Array(HT * HT);
   for (let j = 0; j < HT; j++) for (let i = 0; i < HT; i++) {
-    hdata[j * HT + i] = THREE.DataUtils.toHalfFloat(terrainHeight((i / (HT - 1)) * 4000 - 2000, (j / (HT - 1)) * 4000 - 2000));
+    hdata[j * HT + i] = THREE.DataUtils.toHalfFloat(terrainHeight((i / (HT - 1)) * 8000 - 4000, (j / (HT - 1)) * 8000 - 4000));
   }
   const htex = new THREE.DataTexture(hdata, HT, HT, THREE.RedFormat, THREE.HalfFloatType);
   htex.minFilter = THREE.LinearFilter; htex.magFilter = THREE.LinearFilter;
@@ -1002,8 +1013,8 @@ export function buildWorld(scene, data, quality = {}) {
       uSunDir: { value: new THREE.Vector3(0.5, 0.62, 0.35).normalize() },
       uPois: { value: poiVecs },
       fogColor: { value: new THREE.Color(0xdcd7ee) },
-      fogNear: { value: 320 },
-      fogFar: { value: 4200 },
+      fogNear: { value: 480 },
+      fogFar: { value: 6000 },
     },
     vertexShader: `
       attribute vec3 aOffset;
@@ -1019,7 +1030,7 @@ export function buildWorld(scene, data, quality = {}) {
       varying float vJit;
       varying float vTrans;
       #include <fog_pars_vertex>
-      float groundAt(vec2 w) { return texture2D(uHeight, (w + 2000.0) / 4000.0).r; }
+      float groundAt(vec2 w) { return texture2D(uHeight, (w + 4000.0) / 8000.0).r; }
       void main() {
         vH = aH;
         vJit = aRand.w;
@@ -1390,7 +1401,7 @@ export function buildWorld(scene, data, quality = {}) {
     grassTime.value = t;
     for (const tx of riverFlowTexs) tx.offset.y = -t * 0.45;
     waterfallTime.value = t;
-    if (cameraPos) grassCam.value.copy(cameraPos);
+    if (cameraPos) { grassCam.value.copy(cameraPos); if (SKY_MESH) SKY_MESH.position.copy(cameraPos); }
     cloudT += dt * 2.2;
     cloudGroup.position.x = (cloudT % 900) - 450;
     if (summit && summit.beaconMat) summit.beaconMat.opacity = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.4));

@@ -165,7 +165,7 @@ Full touch support, auto-detected (also switchable in Settings):
 - 20 Hz position snapshots with client interpolation, tracers, killfeed, in-match & lobby chat
 
 **The island**
-- 4 km × 4 km procedurally-built island (4000×4000 units) with 10 named POIs, 85 buildings, 700+ harvestable trees & rocks
+- 8 km × 8 km procedurally-built island (8000×8000 units) with 20 named POIs, 220+ buildings, 2700+ harvestable trees & rocks
 - Battle Bus drop, skydiving + glider, swimming, shrinking storm with escalating damage
 - Custom **GLSL shaders**: animated sky with sun & drifting noise clouds, animated water with fresnel + sparkle, scrolling purple storm wall, rarity loot beams
 - Dynamic sun shadows, distance fog, POI nameplates
