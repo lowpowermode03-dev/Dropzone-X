@@ -19,9 +19,9 @@ let META = null;
 
 // ---------------- settings & quality ----------------
 const QUALITY_PRESETS = {
-  cinematic: { pixelRatio: Math.min(devicePixelRatio || 1, 2), shadow: 2048, grass: 46000, seg: 320, aniso: 8 },
-  balanced: { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadow: 1024, grass: 22000, seg: 224, aniso: 4 },
-  performance: { pixelRatio: 1, shadow: 512, grass: 7000, seg: 160, aniso: 2 },
+  cinematic: { pixelRatio: Math.min(devicePixelRatio || 1, 2), shadow: 2048, grass: 46000, seg: 512, aniso: 8 },
+  balanced: { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadow: 1024, grass: 22000, seg: 384, aniso: 4 },
+  performance: { pixelRatio: 1, shadow: 512, grass: 7000, seg: 256, aniso: 2 },
 };
 const HAS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 let SETTINGS = { quality: 'auto', touch: 'auto', sens: 1, vol: 80, invert: false, fps: false, post: 'auto' };
@@ -523,7 +523,7 @@ const G = {
   remotes: new Map(), loot: new Map(), structures: new Map(), tracers: [], mobs: new Map(),
   keys: {}, mouseDown: false, clicked: false, lastShot: 0, lastMoveSend: 0, lastMinimap: 0,
   buildMode: false, buildType: 'wall', buildMat: 'wood', slot: 0, swingAt: 0,
-  storm: { cx: 0, cz: 0, radius: 1900, timer: 0, state: 'idle' }, aliveCount: 24, busPos: { x: -1900, y: 230, z: 0 },
+  storm: { cx: 0, cz: 0, radius: 3400, timer: 0, state: 'idle' }, aliveCount: 24, busPos: { x: -3900, y: 460, z: 0 },
   skyMat: null, waterMat: null, stormWall: null, busGroup: null, ghost: null, viewmodel: null, vmWeapon: '', myPlacement: 0,
   ads: false, vmKick: 0, camShake: 0, landDip: 0, stepAcc: 0, stepPhase: 0,
   particles: null, sunSprite: null, minimapBase: null, dynRatio: 0, fpsEMA: 60, fpsTimer: 0, frameCount: 0,
@@ -643,7 +643,7 @@ function initRenderer() {
   G.renderer.domElement.className = 'game';
   G.renderer.domElement.style.cssText = 'position:fixed;inset:0;z-index:0';
   document.body.appendChild(G.renderer.domElement);
-  G.camera = new THREE.PerspectiveCamera(78, innerWidth / innerHeight, 0.1, 9000);
+  G.camera = new THREE.PerspectiveCamera(78, innerWidth / innerHeight, 0.1, 16000);
   addEventListener('resize', () => {
     G.camera.aspect = innerWidth / innerHeight; G.camera.updateProjectionMatrix();
     if (G.menuCamera) { G.menuCamera.aspect = innerWidth / innerHeight; G.menuCamera.updateProjectionMatrix(); }
@@ -802,14 +802,14 @@ async function startMenuScene() {
     initRenderer();
     if (!G.renderer) return;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xdcd7ee, 260, 3500);
+    scene.fog = new THREE.Fog(0xdcd7ee, 300, 5200);
     G.menuScene = scene;
     createSky(scene); createWater(scene);
     scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4a7c43, 1.05));
     const sun = new THREE.DirectionalLight(0xffdfae, 2.2);
     sun.position.set(400, 700, 250); scene.add(sun);
-    G.menuWorldRef = buildWorld(scene, data, { grass: 16000, seg: 128, aniso: 2 });
-    G.menuCamera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 9000);
+    G.menuWorldRef = buildWorld(scene, data, { grass: 16000, seg: 256, aniso: 2 });
+    G.menuCamera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 16000);
     document.body.classList.add('menu3d');
     updateMenuChar();
     const menuLoop = (now) => {
@@ -902,7 +902,7 @@ function startMatch(data) {
   $('killInfo').textContent = '💀 0';
   document.body.classList.remove('scoping');
   show('loadingScreen');
-  $('loadingFill').style.width = '35%'; $('loadingText').textContent = 'Building island (4000 × 4000)…';
+  $('loadingFill').style.width = '35%'; $('loadingText').textContent = 'Building island (8000 × 8000)…';
   setTimeout(() => {
     initRenderer();
     if (!G.renderer) { showNotice('WebGL is not available on this device/browser', '#7d1d1d'); show('lobbyScreen'); return; }
@@ -911,7 +911,7 @@ function startMatch(data) {
     G.pos.set(data.bus.x, data.bus.y, data.bus.z);
     G.remotes.clear(); G.loot.clear(); G.structures.clear(); G.self = null;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xdcd7ee, 260, 3500);
+    scene.fog = new THREE.Fog(0xdcd7ee, 300, 5200);
     G.scene = scene;
     G.skyMat = createSky(scene);
     G.waterMat = createWater(scene);
@@ -968,21 +968,91 @@ function startMatch(data) {
   }, 60);
 }
 
+// The Battle Bus — blimp balloon with teal chevrons, a proper gondola cab,
+// twin spinning side props, blinking nav lights and a swaying supply basket.
+// Animated bits ride in userData.parts; the render loop spins/pulses them.
 function makeBus() {
   const g = new THREE.Group();
-  const balloon = new THREE.Mesh(new THREE.SphereGeometry(13, 20, 16), new THREE.MeshStandardMaterial({ color: 0xf6fbff, roughness: 0.45 }));
-  balloon.scale.set(1.5, 1, 1); balloon.position.y = 16;
-  const tealMat = new THREE.MeshStandardMaterial({ color: 0x2ec4c6, roughness: 0.45 });
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(13.1, 20, 8, 0, Math.PI * 2, 0, 1.12), tealMat); // teal crown, like the key art
-  cap.scale.copy(balloon.scale); cap.position.y = 16;
-  const band = new THREE.Mesh(new THREE.SphereGeometry(13.12, 20, 8, 0, Math.PI * 2, 1.32, 0.5), tealMat);
-  band.scale.copy(balloon.scale); band.position.y = 16;
-  const bus = new THREE.Mesh(new THREE.BoxGeometry(15, 4.2, 4.6), new THREE.MeshStandardMaterial({ color: 0x3b6fd4 }));
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(15.4, 0.7, 5), new THREE.MeshStandardMaterial({ color: 0xffd23f }));
-  roof.position.y = 2.4;
-  const winMat = new THREE.MeshStandardMaterial({ color: 0xbfe9ff, emissive: 0x6fb7ff, emissiveIntensity: 0.5 });
-  for (let i = -3; i <= 3; i++) { const w = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 4.75), winMat); w.position.set(i * 2, 0.5, 0); bus.add(w); }
-  bus.add(roof); g.add(balloon, cap, band, bus);
+  const parts = { props: [], beacons: [], winMat: null };
+  const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.5, metalness: o.metal ?? 0.08, emissive: o.e || 0x000000, emissiveIntensity: o.ei ?? 0 });
+  const teal = std(0x2ec4c6, { rough: 0.42 });
+  const white = std(0xf6fbff, { rough: 0.45 });
+  // ---- balloon: white envelope, teal crown + equator band, chevron stripes
+  const balloon = new THREE.Mesh(new THREE.SphereGeometry(13, 24, 18), white);
+  balloon.scale.set(1.55, 1, 1); balloon.position.y = 17;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(13.12, 24, 10, 0, Math.PI * 2, 0, 1.05), teal);
+  cap.scale.copy(balloon.scale); cap.position.y = 17;
+  const band = new THREE.Mesh(new THREE.SphereGeometry(13.14, 24, 8, 0, Math.PI * 2, 1.35, 0.42), teal);
+  band.scale.copy(balloon.scale); band.position.y = 17;
+  g.add(balloon, cap, band);
+  for (const sx of [-1, 1]) { // teal hull rings hugging the envelope
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(11.75, 0.55, 8, 28), teal);
+    ring.position.set(sx * 9, 17, 0); ring.rotation.y = Math.PI / 2;
+    g.add(ring);
+  }
+  const finMat = teal;
+  for (const sz of [-1, 1]) { // tail fins
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(5.5, 6.5, 0.7), finMat);
+    fin.position.set(-20.5, 19.5, sz * 3.4); fin.rotation.set(0, sz * 0.5, 0.5);
+    g.add(fin);
+  }
+  const vfin = new THREE.Mesh(new THREE.BoxGeometry(5.5, 7.5, 0.7), finMat);
+  vfin.position.set(-20.5, 24.5, 0); vfin.rotation.z = 0.45; g.add(vfin);
+  // ---- gondola cab (the bus itself)
+  const cab = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(16, 4.4, 5), std(0x3b6fd4, { rough: 0.38, metal: 0.25 }));
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.6, 4.6), std(0x2dd4ee, { rough: 0.25, metal: 0.4 }));
+  nose.position.set(9.2, -0.3, 0); nose.rotation.z = -0.12;
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(16.6, 0.8, 5.4), std(0xffd23f, { rough: 0.4 }));
+  roof.position.y = 2.55;
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(13, 1.1, 3.6), std(0x27324a, { rough: 0.5, metal: 0.4 }));
+  keel.position.y = -2.7;
+  parts.winMat = std(0xbfe9ff, { e: 0x6fb7ff, ei: 0.85, rough: 0.2 });
+  cab.add(body, nose, roof, keel);
+  for (let i = -3; i <= 3; i++) { const w = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.15, 5.15), parts.winMat); w.position.set(i * 2.1, 0.55, 0); cab.add(w); }
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.7, 4.2), parts.winMat); // windshield
+  shield.position.set(8.15, 0.55, 0); shield.rotation.z = -0.12; cab.add(shield);
+  for (const sz of [-1, 1]) { // landing skids
+    const skid = new THREE.Mesh(new THREE.BoxGeometry(11, 0.35, 0.5), std(0x39445c, { metal: 0.6, rough: 0.35 }));
+    skid.position.set(0, -3.6, sz * 1.7); cab.add(skid);
+  }
+  g.add(cab);
+  // ---- rigging: balloon -> cab struts + cables
+  const strutMat = std(0x39445c, { metal: 0.6, rough: 0.35 });
+  for (const sx of [-6, 6]) for (const sz of [-1.8, 1.8]) {
+    const len = 11.5;
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, len, 6), strutMat);
+    s.position.set(sx, 8.2, sz * 1.4); s.rotation.x = sz > 0 ? 0.1 : -0.1; g.add(s);
+  }
+  // ---- twin side propellers (spin in the render loop)
+  for (const sz of [-1, 1]) {
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.1, 3.2), strutMat);
+    pylon.position.set(-2, 1.2, sz * 3.9); g.add(pylon);
+    const hub = new THREE.Group(); hub.position.set(-2, 1.2, sz * 5.6);
+    const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.3, 10), std(0xffd23f, { rough: 0.35 }));
+    spinner.rotation.x = sz > 0 ? Math.PI / 2 : -Math.PI / 2; hub.add(spinner);
+    for (let b = 0; b < 3; b++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.6, 0.09), std(0x22242e, { metal: 0.5, rough: 0.3 }));
+      blade.rotation.z = (b / 3) * Math.PI * 2; hub.add(blade);
+    }
+    g.add(hub); parts.props.push(hub);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 8), new THREE.MeshBasicMaterial({ color: sz > 0 ? 0x53ff8a : 0xff5a5a }));
+    tip.position.set(8.6, -3.4, sz * 2.1); cab.add(tip); parts.beacons.push(tip);
+  }
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  tail.position.set(-8.4, 1.2, 0); cab.add(tail); parts.beacons.push(tail);
+  // ---- supply basket swaying under the keel + hang lanterns
+  const basket = new THREE.Group(); basket.position.set(0, -4.4, 0);
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 3.2), std(0xc98f3d, { rough: 0.7 }));
+  crate.position.y = -2.4; basket.add(crate);
+  for (const sx of [-1.4, 1.4]) for (const sz of [-1.4, 1.4]) {
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.4, 5), strutMat);
+    rope.position.set(sx * 0.7, -0.6, sz * 0.7); rope.rotation.z = sx > 0 ? 0.3 : -0.3; basket.add(rope);
+  }
+  for (const sx of [-7.9, 7.9]) { const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffc46b })); lamp.position.set(sx, -2.9, 0); cab.add(lamp); }
+  g.add(basket);
+  parts.basket = basket;
+  g.userData.parts = parts;
   return g;
 }
 
@@ -1845,6 +1915,20 @@ function loop(now) {
   if (G.skyMat) G.skyMat.uniforms.uTime.value = t;
   if (G.waterMat) G.waterMat.uniforms.uTime.value = t;
   if (G.stormWall) G.stormWall.mat.uniforms.uTime.value = t;
+  // Battle Bus life: spool the props, blink the nav lights, sway the basket,
+  // and let the whole ship bob and bank gently as it rides the wind.
+  if (G.busGroup && G.busGroup.visible) {
+    const bp = G.busGroup.userData.parts;
+    if (bp) {
+      for (const p of bp.props) p.rotation.z += dt * 28;
+      bp.beacons.forEach((b, i) => { b.visible = Math.sin(t * 4.4 + i * 2.1) > -0.35; });
+      if (bp.basket) { bp.basket.rotation.x = Math.sin(t * 0.9) * 0.05; bp.basket.rotation.z = Math.cos(t * 0.7) * 0.06; }
+      if (bp.winMat) bp.winMat.emissiveIntensity = 0.75 + Math.sin(t * 2.2) * 0.2;
+    }
+    G.busGroup.position.y += Math.sin(t * 0.8) * 1.6;
+    G.busGroup.rotation.z = Math.sin(t * 0.5) * 0.02;
+    G.busGroup.rotation.x = Math.sin(t * 0.34) * 0.012;
+  }
 
   // ----- local movement -----
   const camDir = new THREE.Vector3();
@@ -2261,7 +2345,7 @@ function buildMinimapBase() {
   const ctx = cv.getContext('2d');
   const img = ctx.createImageData(S, S);
   for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
-    const wx = (px / S) * 4000 - 2000, wz = (py / S) * 4000 - 2000;
+    const wx = (px / S) * 8000 - 4000, wz = (py / S) * 8000 - 4000;
     const h = terrainHeight(wx, wz);
     let r, g, b;
     if (h < -1.5) { r = 38; g = 110; b = 190; }
@@ -2281,13 +2365,13 @@ function buildMinimapBase() {
   ctx.fillStyle = '#eaf4ff';
   ctx.strokeStyle = 'rgba(20,30,50,0.8)'; ctx.lineWidth = 0.8;
   for (const m of MOUNTAINS) {
-    const x = (m.x + 2000) / 4000 * S, y = (m.z + 2000) / 4000 * S;
+    const x = (m.x + 4000) / 8000 * S, y = (m.z + 4000) / 8000 * S;
     ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x - 3.4, y + 2.6); ctx.lineTo(x + 3.4, y + 2.6); ctx.closePath();
     ctx.fill(); ctx.stroke();
   }
   ctx.font = '800 7.5px Segoe UI'; ctx.textAlign = 'center';
   for (const p of G.data.pois) {
-    const x = (p.x + 2000) / 4000 * S, y = (p.z + 2000) / 4000 * S;
+    const x = (p.x + 4000) / 8000 * S, y = (p.z + 4000) / 8000 * S;
     ctx.fillStyle = 'rgba(20,24,40,0.8)';
     ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.fillText(p.name.split(' ')[0].toUpperCase(), x, y - 4);
@@ -2297,10 +2381,10 @@ function buildMinimapBase() {
 function drawMinimap() {
   const cv = $('minimap'); if (!cv || !G.data) return;
   const ctx = cv.getContext('2d');
-  const S = cv.width, W2C = S / 4000;
+  const S = cv.width, W2C = S / 8000;
   if (G.minimapBase) ctx.drawImage(G.minimapBase, 0, 0);
   else { ctx.fillStyle = '#69a83f'; ctx.fillRect(0, 0, S, S); }
-  const scx = (G.storm.cx + 2000) * W2C, scz = (G.storm.cz + 2000) * W2C, sr = Math.max(2, G.storm.radius * W2C);
+  const scx = (G.storm.cx + 4000) * W2C, scz = (G.storm.cz + 4000) * W2C, sr = Math.max(2, G.storm.radius * W2C);
   ctx.beginPath();
   ctx.rect(0, 0, S, S);
   ctx.arc(scx, scz, sr, 0, Math.PI * 2);
@@ -2311,9 +2395,9 @@ function drawMinimap() {
   for (const r of G.remotes.values()) {
     if (!r.mesh.visible) continue;
     ctx.fillStyle = '#ff5252';
-    ctx.beginPath(); ctx.arc((r.target.x + 2000) * W2C, (r.target.z + 2000) * W2C, 2.4, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc((r.target.x + 4000) * W2C, (r.target.z + 4000) * W2C, 2.4, 0, 7); ctx.fill();
   }
-  const mx = (G.pos.x + 2000) * W2C, mz = (G.pos.z + 2000) * W2C;
+  const mx = (G.pos.x + 4000) * W2C, mz = (G.pos.z + 4000) * W2C;
   const fx = -Math.sin(G.yaw), fz = -Math.cos(G.yaw);
   ctx.fillStyle = 'rgba(255,210,63,0.30)';
   ctx.beginPath(); ctx.moveTo(mx, mz);

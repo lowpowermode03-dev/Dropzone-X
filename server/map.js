@@ -1,7 +1,7 @@
 // FortWorld - shared deterministic map generation (server + client must match)
-// Map size 4000x4000 units (~4km x 4km). Height function is pure math so both sides agree.
+// Map size 8000x8000 units (~8km x 8km). Height function is pure math so both sides agree.
 
-const MAP_SIZE = 4000;
+const MAP_SIZE = 8000;
 const HALF = MAP_SIZE / 2;
 
 // Expansion zones baked by tools/bake_maps.mjs into terrain stamps.
@@ -26,6 +26,14 @@ const HILLS = [
   { x: 0, z: 0, r: 500, h: 30 },
   { x: -300, z: 1400, r: 600, h: 40 },
   { x: 1300, z: 300, r: 550, h: 45 },
+  // outer ring (8000m map): gentle swells, kept far enough out that the
+  // original island's coastline heights are essentially untouched
+  { x: 2500, z: -600, r: 520, h: 34 },
+  { x: -2300, z: -400, r: 480, h: 30 },
+  { x: 300, z: -2700, r: 540, h: 36 },
+  { x: -800, z: 2600, r: 500, h: 28 },
+  { x: 2800, z: 1900, r: 560, h: 38 },
+  { x: -2900, z: -1500, r: 520, h: 32 },
 ];
 
 // Mountain massifs — real playable terrain (peaks ~180-290m). MUST match client world.js.
@@ -36,6 +44,11 @@ const MOUNTAINS = [
   { name: 'Kings Crown', x: 1550, z: 150, r: 560, h: 180 },
   { name: 'Verde Highlands', x: -1550, z: 1100, r: 600, h: 170 },
   { name: 'Solstice Peaks', x: 700, z: 1650, r: 520, h: 175 },
+  // outer range (8000m map): the island's new far peaks
+  { name: 'Aurora Summit', x: 3450, z: -3050, r: 600, h: 200 },
+  { name: 'Cinder Tooth', x: -3200, z: 3250, r: 560, h: 185 },
+  { name: 'Breaker Spire', x: 3250, z: 3250, r: 540, h: 170 },
+  { name: 'Westwall Range', x: -3450, z: -350, r: 580, h: 190 },
 ];
 
 function terrainNative(x, z) {
@@ -107,10 +120,10 @@ function terrainNative(x, z) {
       h = h + (bestBed - h) * Math.pow(ch, 0.75);
     }
   }
-  // island falloff to water at edges
+  // island falloff to water at edges (8000m map: landmass reaches further)
   const edge = Math.max(Math.abs(x), Math.abs(z));
-  if (edge > 1500) {
-    const t = (edge - 1500) / 500;
+  if (edge > 3000) {
+    const t = (edge - 3000) / 900;
     h = h * (1 - Math.min(1, t)) + (-14) * Math.min(1, t);
   }
   return h;
@@ -181,6 +194,14 @@ const POIS = [
 for (const zn of EXPANSION_ZONES) {
   POIS.push({ name: zn.name, x: zn.x, z: zn.z, r: 230, color: zn.color, zoneId: zn.id, loot: zn.loot, night: zn.night || undefined });
 }
+// Outer-ring POIs for the 8000m map (appended last so existing generated
+// buildings/nature/loot streams never shift for earlier POIs).
+POIS.push(
+  { name: 'Aurora Downs', x: 2900, z: -2900, r: 210, color: 0x9fd8e8, loot: 12 },
+  { name: 'Cinder Hollow', x: -3050, z: 3050, r: 210, color: 0xe07a5f, loot: 12 },
+  { name: 'Breakwater Bay', x: 3100, z: 2750, r: 200, color: 0x7fb4d9, loot: 12 },
+  { name: 'Westwall Town', x: -3150, z: -450, r: 200, color: 0xb8a888, loot: 12 },
+);
 
 // Buildings per POI: deterministic boxes
 function genBuildings() {
@@ -244,8 +265,8 @@ function genNature() {
   const trees = [];
   const rocks = [];
   for (let i = 0; i < 1700; i++) {
-    const x = (rng() - 0.5) * 3800;
-    const z = (rng() - 0.5) * 3800;
+    const x = (rng() - 0.5) * 7600;
+    const z = (rng() - 0.5) * 7600;
     const h = terrainHeight(x, z);
     if (h < -4) continue; // water
     let inPoi = false;
@@ -277,7 +298,7 @@ function genMountainDetail(trees, rocks) {
       const a = rng() * Math.PI * 2;
       const d = Math.sqrt(rng()) * m.r * 1.35;
       const x = m.x + Math.cos(a) * d, z = m.z + Math.sin(a) * d;
-      if (Math.abs(x) > 1950 || Math.abs(z) > 1950) continue;
+      if (Math.abs(x) > 3900 || Math.abs(z) > 3900) continue;
       const h = terrainHeight(x, z);
       if (h < 3) continue;
       let nearPoi = false;
@@ -318,8 +339,8 @@ function genLootSpawns() {
       pts.push({ x: p.x + Math.cos(a) * d, z: p.z + Math.sin(a) * d });
     }
   }
-  for (let i = 0; i < 60; i++) {
-    pts.push({ x: (rng() - 0.5) * 3400, z: (rng() - 0.5) * 3400 });
+  for (let i = 0; i < 260; i++) {
+    pts.push({ x: (rng() - 0.5) * 7000, z: (rng() - 0.5) * 7000 });
   }
   return pts;
 }
